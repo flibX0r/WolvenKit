@@ -36,6 +36,13 @@ public enum EDockedViews
     AssetBrowserViewModel,
     TweakBrowserViewModel,
     LocKeyBrowserViewModel,
-    TextureImportViewModel,
-    TextureExportViewModel
+    ImportViewModel,
+    ExportViewModel,
+    HashToolViewModel
+}
+
+public enum ScriptSource
+{
+    System,
+    User
 }

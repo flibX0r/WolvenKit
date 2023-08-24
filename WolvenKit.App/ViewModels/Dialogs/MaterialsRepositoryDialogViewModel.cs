@@ -13,6 +13,7 @@ using WolvenKit.App.Controllers;
 using WolvenKit.App.Helpers;
 using WolvenKit.App.Services;
 using WolvenKit.Common;
+using WolvenKit.Common.Conversion;
 using WolvenKit.Common.Interfaces;
 using WolvenKit.Common.Model;
 using WolvenKit.Common.Model.Arguments;
@@ -20,6 +21,7 @@ using WolvenKit.Core.Extensions;
 using WolvenKit.Core.Interfaces;
 using WolvenKit.Core.Services;
 using WolvenKit.RED4.Archive;
+using WolvenKit.RED4.CR2W.JSON;
 using Path = System.IO.Path;
 
 namespace WolvenKit.App.ViewModels.Dialogs;
@@ -95,6 +97,33 @@ public partial class MaterialsRepositoryViewModel : DialogWindowViewModel
     }
 
     [RelayCommand]
+    private async Task MigrateDepot()
+    {
+        var files = Directory.GetFiles(MaterialsDepotPath, "*.json", SearchOption.AllDirectories);
+
+        _loggerService.Info($"Found {files.Length} entries to migrate");
+
+        var progress = 0;
+        _progress.Report(progress);
+
+        async Task UncookAsync(string filePath)
+        {
+            var text = await File.ReadAllTextAsync(filePath);
+            if (RedJsonSerializer.TryDeserialize<RedFileDto>(text, out var redFileDto) && redFileDto != null)
+            {
+                await File.WriteAllTextAsync(filePath, RedJsonSerializer.Serialize(new RedFileDto(redFileDto.Data!, redFileDto.Header.DataType == DataTypes.CR2WFlat)));
+            }
+
+            Interlocked.Increment(ref progress);
+            _progress.Report(progress / (float)files.Length);
+        }
+        await files.ParallelForEachAsync(UncookAsync, _maxDoP);
+
+        _progress.Completed();
+        _loggerService.Success($"Migrated {files.Length} files.");
+    }
+
+    [RelayCommand]
     private async Task GenerateMaterialRepo()
     {
         var materialRepoDir = new DirectoryInfo(MaterialsDepotPath);
@@ -145,8 +174,6 @@ public partial class MaterialsRepositoryViewModel : DialogWindowViewModel
             {
                 var ar = (Archive)_archiveManager.Archives.Lookup(archiveGroup.Key).Value;
 
-                ar.SetBulkExtract(true);
-
                 if (UseNewParallelism)
                 {
                     async Task UnbundleAsync(IGameFile entry)
@@ -160,7 +187,7 @@ public partial class MaterialsRepositoryViewModel : DialogWindowViewModel
                             if (dirInfo.Exists) // CreateDirectory sometimes is false even on success.
                             {
                                 using var fs = new FileStream(endPath, FileMode.Create, FileAccess.Write);
-                                await entry.ExtractAsync(fs);
+                                await ar.ExtractFileAsync(entry, fs);
                             }
                             Interlocked.Increment(ref progress);
                             _progress.Report(progress / (float)fileCount);
@@ -190,7 +217,7 @@ public partial class MaterialsRepositoryViewModel : DialogWindowViewModel
                                 if (dirInfo.Exists) // CreateDirectory sometimes is false even on success.
                                 {
                                     using var fs = new FileStream(endPath, FileMode.Create, FileAccess.Write);
-                                    entry.Extract(fs);
+                                    ar.ExtractFile(entry, fs);
                                 }
                                 Interlocked.Increment(ref progress);
                                 _progress.Report(progress / (float)filesList.Count);
@@ -204,7 +231,7 @@ public partial class MaterialsRepositoryViewModel : DialogWindowViewModel
                     );
                 }
 
-                ar.SetBulkExtract(false);
+                ar.ReleaseFileHandle();
             }
 
             // Temporary measure. As memory optimizations get made with streams
@@ -242,16 +269,12 @@ public partial class MaterialsRepositoryViewModel : DialogWindowViewModel
             {
                 var ar = (Archive)_archiveManager.Archives.Lookup(archiveGroup.Key).Value;
 
-                ar.SetBulkExtract(true);
-
                 if (UseNewParallelism)
                 {
                     async Task UncookAsync(IGameFile entry)
                     {
                         try
                         {
-                            ArgumentNullException.ThrowIfNull(exportArgs); // TODO WHY???
-
                             exportArgs.Get<MlmaskExportArgs>().AsList = false;
                             await _modTools.UncookSingleAsync(entry.GetArchive<ICyberGameArchive>(), entry.Key, materialRepoDir, exportArgs);
 
@@ -291,7 +314,7 @@ public partial class MaterialsRepositoryViewModel : DialogWindowViewModel
                     );
                 }
 
-                ar.SetBulkExtract(false);
+                ar.ReleaseFileHandle();
             }
 
             // Temporary measure. As memory optimizations get made with streams
@@ -319,6 +342,8 @@ public partial class MaterialsRepositoryViewModel : DialogWindowViewModel
         var depotPath = new DirectoryInfo(_settingsManager.MaterialRepositoryPath);
         if (depotPath.Exists)
         {
+            await _gameControllerFactory.GetRed4Controller().HandleStartup();
+
             await Task.Run(() =>
             {
                 var archives = _archiveManager.Archives.KeyValues.Select(x => x.Value).ToList();

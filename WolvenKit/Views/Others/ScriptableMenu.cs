@@ -4,13 +4,14 @@ using System;
 using System.Collections.Generic;
 using System.Windows.Controls;
 using Splat;
+using WolvenKit.App.Scripting;
 using WolvenKit.App.Services;
 
 namespace WolvenKit.Views.Others;
 
 public class ScriptableMenu : Menu, IScriptableControl
 {
-    private ExtendedScriptService _scriptService;
+    private AppScriptService _scriptService;
 
     private readonly List<UIElement> _scriptedElements = new();
     private bool _disposed;
@@ -31,10 +32,10 @@ public class ScriptableMenu : Menu, IScriptableControl
             throw new Exception("ScriptingName must be explicitly set!");
         }
 
-        _scriptService = Locator.Current.GetService<ExtendedScriptService>();
+        _scriptService = Locator.Current.GetService<AppScriptService>();
         if (_scriptService == null)
         {
-            throw new Exception("ExtendedScriptService could not be found!");
+            throw new Exception("AppScriptService could not be found!");
         }
 
         _scriptService.RegisterControl(this);
@@ -42,15 +43,30 @@ public class ScriptableMenu : Menu, IScriptableControl
         base.OnInitialized(e);
     }
 
-    public void AddScriptedElements(List<ScriptEntry> scriptEntries)
+    public void AddScriptedElements(List<ScriptFunctionWrapper> scriptEntries)
     {
         foreach (var scriptEntry in scriptEntries)
         {
-            var menuItem = new MenuItem { Header = scriptEntry.Name };
-            menuItem.Click += (_, _) => scriptEntry.Execute();
+            var menuItem = CreateTree(scriptEntry);
 
             Items.Add(menuItem);
             _scriptedElements.Add(menuItem);
+        }
+
+        MenuItem CreateTree(ScriptFunctionWrapper scriptEntry)
+        {
+            var menuItem = new MenuItem { Header = scriptEntry.Name };
+            if (scriptEntry.HasFunction)
+            {
+                menuItem.Click += (_, _) => scriptEntry.Execute();
+            }
+
+            foreach (var child in scriptEntry.Children)
+            {
+                menuItem.Items.Add(CreateTree(child));
+            }
+
+            return menuItem;
         }
     }
 

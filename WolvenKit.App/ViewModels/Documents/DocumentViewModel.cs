@@ -26,9 +26,11 @@ public abstract partial class DocumentViewModel : PaneViewModel, IDocumentViewMo
 
         State = DockState.Document;
         SideInDockedMode = DockSide.Tabbed;
+        CanSerialize = false;
     }
 
     [ObservableProperty] private string _filePath;
+    [ObservableProperty] private bool _isReadOnly;
 
     private bool _isDirty;
 

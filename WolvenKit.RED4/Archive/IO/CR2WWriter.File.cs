@@ -6,6 +6,7 @@ using WolvenKit.Core.CRC;
 using WolvenKit.Core.Extensions;
 using WolvenKit.RED4.Archive.Buffer;
 using WolvenKit.RED4.Archive.CR2W;
+using WolvenKit.RED4.Archive.IO.PreProcessor;
 using WolvenKit.RED4.Types;
 using WolvenKit.RED4.Types.Exceptions;
 
@@ -19,6 +20,8 @@ public partial class CR2WWriter
 
     static CR2WWriter()
     {
+        s_preProcessors.Add(typeof(appearanceAppearanceDefinition), typeof(appearanceAppearanceDefinitionPreProcessor));
+        s_preProcessors.Add(typeof(CMesh), typeof(CMeshPreProcessor));
         s_preProcessors.Add(typeof(entEntityTemplate), typeof(entEntityTemplatePreProcessor));
     }
 
@@ -391,6 +394,66 @@ public partial class CR2WWriter
 
             buffer.SetBytes(newData);
         }
+
+        if (buffer.Data is CR2WWrapper wrapper)
+        {
+            using var ms = new MemoryStream();
+            using var wrapperWriter = new CR2WWrapperWriter(ms) { LoggerService = LoggerService };
+
+            wrapperWriter.Write(wrapper);
+
+            var newData = ms.ToArray();
+
+            buffer.SetBytes(newData);
+        }
+
+        if (buffer.Data is FoliageBuffer foliageBuffer)
+        {
+            using var ms = new MemoryStream();
+            using var foliageWriter = new FoliageWriter(ms);
+
+            foliageWriter.WriteBuffer(foliageBuffer, (worldFoliageCompiledResource)buffer.Parent);
+
+            var newData = ms.ToArray();
+
+            buffer.SetBytes(newData);
+        }
+
+        if (buffer.Data is AnimFacialSetupBakedDataBuffer animFacialSetupBakedDataBuffer)
+        {
+            using var ms = new MemoryStream();
+            using var foliageWriter = new AnimFacialSetupBakedDataWriter(ms);
+
+            foliageWriter.WriteBuffer(animFacialSetupBakedDataBuffer, (animFacialSetup)buffer.Parent);
+
+            var newData = ms.ToArray();
+
+            buffer.SetBytes(newData);
+        }
+
+        if (buffer.Data is AnimFacialSetupMainPosesDataBuffer animFacialSetupMainPosesDataBuffer)
+        {
+            using var ms = new MemoryStream();
+            using var foliageWriter = new AnimFacialSetupMainPosesDataWriter(ms);
+
+            foliageWriter.WriteBuffer(animFacialSetupMainPosesDataBuffer, (animFacialSetup)buffer.Parent);
+
+            var newData = ms.ToArray();
+
+            buffer.SetBytes(newData);
+        }
+
+        if (buffer.Data is AnimFacialSetupCorrectivePosesDataBuffer animFacialSetupCorrectivePosesDataBuffer)
+        {
+            using var ms = new MemoryStream();
+            using var foliageWriter = new AnimFacialSetupCorrectivePosesDataWriter(ms);
+
+            foliageWriter.WriteBuffer(animFacialSetupCorrectivePosesDataBuffer, (animFacialSetup)buffer.Parent);
+
+            var newData = ms.ToArray();
+
+            buffer.SetBytes(newData);
+        }
     }
 
     private CR2WBufferInfo WriteBuffer(BinaryWriter writer, RedBuffer buffer)
@@ -587,7 +650,7 @@ public partial class CR2WWriter
 
                 if (s_preProcessors.TryGetValue(chunk.GetType(), out var processor))
                 {
-                    if (System.Activator.CreateInstance(processor) is IPreProcessor instance)
+                    if (System.Activator.CreateInstance(processor, LoggerService) is IPreProcessor instance)
                     {
                         instance.Process(chunk);
                     }

@@ -1,85 +1,135 @@
-#nullable enable
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WolvenKit.Common.Conversion;
 using WolvenKit.Core.Extensions;
 using WolvenKit.RED4.Archive.Buffer;
-using WolvenKit.RED4.Archive.CR2W;
 using WolvenKit.RED4.Types;
 
 namespace WolvenKit.RED4.CR2W.JSON;
 
-public class CDateTimeConverter : JsonConverter<CDateTime>, ICustomRedConverter
+public class CDateTimeConverter : CustomRedConverter<CDateTime>
 {
-    public object ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
+    public override CDateTime Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        JsonSerializer.Deserialize<ulong>(ref reader, options);
 
-    public override CDateTime Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.GetUInt64();
-
-    public override void Write(Utf8JsonWriter writer, CDateTime value, JsonSerializerOptions options) => writer.WriteNumberValue(value);
+    public override void Write(Utf8JsonWriter writer, CDateTime value, JsonSerializerOptions options) =>
+        JsonSerializer.Serialize(writer, (ulong)value, options);
 }
 
-public class CGuidConverter : JsonConverter<CGuid>, ICustomRedConverter
+public class CGuidConverter : CustomRedConverter<CGuid>
 {
-    public object ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override CGuid Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.GetBytesFromBase64();
 
     public override void Write(Utf8JsonWriter writer, CGuid value, JsonSerializerOptions options) => writer.WriteBase64StringValue((byte[])value);
 }
 
-public class CNameConverter : JsonConverter<CName>, ICustomRedConverter
+public class CNameConverter : CustomRedConverter<CName>
 {
-    public object ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override CName Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (RedJsonSerializer.IsOlderThen("0.0.7"))
+        {
+            return ReadV1(ref reader, typeToConvert, options);
+        }
+
+        return ReadV2(ref reader, typeToConvert, options);
+    }
+
+    public CName ReadV1(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
         {
             return (CName)RedTypeManager.CreateRedType(typeToConvert);
         }
 
-        if (reader.TokenType == JsonTokenType.String)
-        {
-            return reader.GetString().NotNull();
-        }
-        else if (reader.TokenType == JsonTokenType.Number)
+        if (reader.TokenType == JsonTokenType.Number)
         {
             return reader.GetUInt64();
         }
-        else
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var str = reader.GetString();
+            if (str == null)
+            {
+                throw new JsonException();
+            }
+
+            if (ulong.TryParse(str, out var value))
+            {
+                return value;
+            }
+
+            return str;
+        }
+
+        throw new JsonException();
+    }
+
+    public CName ReadV2(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject)
         {
             throw new JsonException();
+        }
+
+        var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(ref reader, options);
+        if (dict == null || dict.Count != 3)
+        {
+            throw new JsonException();
+        }
+
+        if (dict["$type"] != nameof(CName))
+        {
+            throw new JsonException();
+        }
+
+        switch (dict["$storage"])
+        {
+            case "string":
+                return dict["$value"];
+
+            case "uint64":
+                return ulong.Parse(dict["$value"]);
+
+            default:
+                throw new JsonException();
         }
     }
 
     public override void Write(Utf8JsonWriter writer, CName value, JsonSerializerOptions options)
     {
-        var resolved = value.GetResolvedText();
-        if (!string.IsNullOrEmpty(resolved) && resolved != "None")
+        writer.WriteStartObject();
+
+        writer.WriteString("$type", "CName");
+        if (value.TryGetResolvedText(out var str))
         {
-            writer.WriteStringValue(resolved);
+            writer.WriteString("$storage", "string");
+            writer.WriteString("$value", str);
         }
         else
         {
-            writer.WriteNumberValue(value);
+            writer.WriteString("$storage", "uint64");
+            writer.WriteString("$value", ((ulong)value).ToString());
         }
+        
+        writer.WriteEndObject();
     }
 }
 
-public class CRUIDConverter : JsonConverter<CRUID>, ICustomRedConverter
+public class CRUIDConverter : CustomRedConverter<CRUID>
 {
-    public object ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
+    public override CRUID Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        JsonSerializer.Deserialize<ulong>(ref reader, options);
 
-    public override CRUID Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.GetUInt64();
-
-    public override void Write(Utf8JsonWriter writer, CRUID value, JsonSerializerOptions options) => writer.WriteNumberValue(value);
+    public override void Write(Utf8JsonWriter writer, CRUID value, JsonSerializerOptions options) =>
+        JsonSerializer.Serialize(writer, (ulong)value, options);
 }
 
-public class CStringConverter : JsonConverter<CString>, ICustomRedConverter
+public class CStringConverter : CustomRedConverter<CString>
 {
-    public object ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override CString Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -93,10 +143,8 @@ public class CStringConverter : JsonConverter<CString>, ICustomRedConverter
     public override void Write(Utf8JsonWriter writer, CString value, JsonSerializerOptions options) => writer.WriteStringValue(value);
 }
 
-public class CVariantConverter : JsonConverter<CVariant>, ICustomRedConverter
+public class CVariantConverter : CustomRedConverter<CVariant>
 {
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override CVariant? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -118,6 +166,11 @@ public class CVariantConverter : JsonConverter<CVariant>, ICustomRedConverter
             {
                 if (result == null)
                 {
+                    if (type is { IsGenericType: true } && (type.GetGenericTypeDefinition() == typeof(CHandle<>) || type.GetGenericTypeDefinition() == typeof(CWeakHandle<>)))
+                    {
+                        return new CVariant { Value = RedTypeManager.CreateRedType(type) };
+                    }
+
                     throw new JsonException();
                 }
 
@@ -238,28 +291,69 @@ public class BufferConverterFactory : JsonConverterFactory
     }
 }
 
-public class DataBufferConverter : JsonConverter<DataBuffer>, ICustomRedConverter
+public class DataBufferConverter : CustomRedConverter<DataBuffer>
 {
     private readonly ReferenceResolver<RedBuffer> _referenceResolver;
 
     public DataBufferConverter(ReferenceResolver<RedBuffer> referenceResolver) => _referenceResolver = referenceResolver;
 
-
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override DataBuffer? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
+        IRedBufferWrapper? result = new DataBuffer();
         if (RedJsonSerializer.IsOlderThen("0.0.3"))
+        {
+            BufferHelper.ReadV1(ref reader, typeToConvert, options, _referenceResolver, ref result);
+        }
+        else
+        {
+            BufferHelper.ReadV2(ref reader, typeToConvert, options, _referenceResolver, ref result);
+        }
+        return (DataBuffer?)result;
+    }
+
+    public override void Write(Utf8JsonWriter writer, DataBuffer value, JsonSerializerOptions options) => BufferHelper.Write(writer, value, options, _referenceResolver);
+}
+
+public class SerializationDeferredDataBufferConverter : CustomRedConverter<SerializationDeferredDataBuffer>
+{
+    private readonly ReferenceResolver<RedBuffer> _referenceResolver;
+
+    public SerializationDeferredDataBufferConverter(ReferenceResolver<RedBuffer> referenceResolver) => _referenceResolver = referenceResolver;
+
+    public override SerializationDeferredDataBuffer? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        IRedBufferWrapper? result = new SerializationDeferredDataBuffer();
+        if (RedJsonSerializer.IsOlderThen("0.0.4"))
+        {
+            BufferHelper.ReadV1(ref reader, typeToConvert, options, _referenceResolver, ref result);
+        }
+        else
+        {
+            BufferHelper.ReadV2(ref reader, typeToConvert, options, _referenceResolver, ref result);
+        }
+        return (SerializationDeferredDataBuffer?)result;
+    }
+
+    public override void Write(Utf8JsonWriter writer, SerializationDeferredDataBuffer value, JsonSerializerOptions options) => BufferHelper.Write(writer, value, options, _referenceResolver);
+}
+
+public class SharedDataBufferConverter : CustomRedConverter<SharedDataBuffer>
+{
+    public override SharedDataBuffer? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        IRedBufferWrapper? result = new SharedDataBuffer();
+        if (RedJsonSerializer.IsOlderThen("0.0.4"))
         {
             return ReadV1(ref reader, typeToConvert, options);
         }
         else
         {
-            return ReadV2(ref reader, typeToConvert, options);
+            BufferHelper.ReadV2(ref reader, typeToConvert, options, null, ref result);
         }
+        return (SharedDataBuffer?)result;
     }
 
-    public DataBuffer? ReadV1(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public SharedDataBuffer? ReadV1(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
         {
@@ -271,8 +365,124 @@ public class DataBufferConverter : JsonConverter<DataBuffer>, ICustomRedConverte
             throw new JsonException();
         }
 
+        reader.Read();
+
+        if (reader.TokenType != JsonTokenType.PropertyName)
+        {
+            throw new JsonException();
+        }
+
+        var propertyName = reader.GetString();
+        reader.Read();
+
+        var val = new SharedDataBuffer();
+        switch (propertyName)
+        {
+            case "File":
+            {
+                //var dto = RedJsonSerializer.Deserialize<RedFileDto>(json);
+
+                var converter = options.GetConverter(typeof(RedFileDto));
+                if (converter is ICustomRedConverter conv)
+                {
+                    var obj = conv.ReadRedType(ref reader, typeof(RedFileDto), options)!;
+                    val.Buffer.Data = new CR2WWrapper { File = ((RedFileDto)obj).Data! };
+                }
+                else
+                {
+                    throw new JsonException();
+                }
+
+                break;
+            }
+
+            case "Data":
+            {
+                var converter = options.GetConverter(typeof(RedPackage));
+                if (converter is ICustomRedConverter conv)
+                {
+                    val.Data = (IParseableBuffer?)conv.ReadRedType(ref reader, typeof(RedPackage), options);
+                }
+                else
+                {
+                    throw new JsonException();
+                }
+
+                break;
+            }
+
+            case "Flags":
+            {
+                if (reader.TokenType != JsonTokenType.Number)
+                {
+                    throw new JsonException();
+                }
+
+                var flags = reader.GetUInt32();
+
+                reader.Read();
+                if (reader.TokenType != JsonTokenType.PropertyName)
+                {
+                    throw new JsonException();
+                }
+
+                propertyName = reader.GetString();
+                if (propertyName != "Bytes")
+                {
+                    throw new JsonException();
+                }
+
+                reader.Read();
+                if (reader.TokenType != JsonTokenType.String)
+                {
+                    throw new JsonException();
+                }
+
+                var bytes = reader.GetBytesFromBase64();
+                val.Buffer = RedBuffer.CreateBuffer(flags, bytes);
+
+                break;
+            }
+
+            default:
+            {
+                throw new JsonException();
+            }
+        }
+
+        reader.Read();
+        if (reader.TokenType != JsonTokenType.EndObject)
+        {
+            throw new JsonException();
+        }
+
+        return val;
+    }
+
+    public override void Write(Utf8JsonWriter writer, SharedDataBuffer value, JsonSerializerOptions options) => BufferHelper.Write(writer, value, options);
+}
+
+internal static class BufferHelper
+{
+    public static void ReadV1(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options, ReferenceResolver<RedBuffer> referenceResolver, ref IRedBufferWrapper? val)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            val = null;
+            return;
+        }
+
+        if (val == null)
+        {
+            throw new JsonException();
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException();
+        }
+
         string? id = null;
-        var val = new DataBuffer();
 
         while (reader.Read())
         {
@@ -320,7 +530,7 @@ public class DataBufferConverter : JsonConverter<DataBuffer>, ICustomRedConverte
                         throw new JsonException();
                     }
 
-                    val.Buffer = _referenceResolver.ResolveReference(refId);
+                    val.Buffer = referenceResolver.ResolveReference(refId);
 
                     break;
                 }
@@ -382,19 +592,21 @@ public class DataBufferConverter : JsonConverter<DataBuffer>, ICustomRedConverte
 
         if (id != null)
         {
-            _referenceResolver.AddReference(id, val.Buffer);
+            referenceResolver.AddReference(id, val.Buffer);
         }
-
-        //misplaced curly bracket ?!
-
-        return val;
     }
 
-    public DataBuffer? ReadV2(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public static void ReadV2(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options, ReferenceResolver<RedBuffer>? referenceResolver, ref IRedBufferWrapper? val)
     {
         if (reader.TokenType == JsonTokenType.Null)
         {
-            return null;
+            val = null;
+            return;
+        }
+
+        if (val == null)
+        {
+            throw new JsonException();
         }
 
         if (reader.TokenType != JsonTokenType.StartObject)
@@ -404,7 +616,6 @@ public class DataBufferConverter : JsonConverter<DataBuffer>, ICustomRedConverte
 
         string? id = null;
         uint flags = 0;
-        var val = new DataBuffer();
 
         while (reader.Read())
         {
@@ -430,13 +641,18 @@ public class DataBufferConverter : JsonConverter<DataBuffer>, ICustomRedConverte
                         throw new JsonException();
                     }
 
+                    if (referenceResolver == null)
+                    {
+                        throw new JsonException();
+                    }
+
                     var refId = reader.GetString();
                     if (refId == null)
                     {
                         throw new JsonException();
                     }
 
-                    val.Buffer = _referenceResolver.ResolveReference(refId);
+                    val.Buffer = referenceResolver.ResolveReference(refId);
 
                     break;
                 }
@@ -444,6 +660,11 @@ public class DataBufferConverter : JsonConverter<DataBuffer>, ICustomRedConverte
                 case "BufferId":
                 {
                     if (reader.TokenType != JsonTokenType.String)
+                    {
+                        throw new JsonException();
+                    }
+
+                    if (referenceResolver == null)
                     {
                         throw new JsonException();
                     }
@@ -527,19 +748,29 @@ public class DataBufferConverter : JsonConverter<DataBuffer>, ICustomRedConverte
 
         if (id != null)
         {
-            _referenceResolver.AddReference(id, val.Buffer);
+            if (referenceResolver == null)
+            {
+                throw new JsonException();
+            }
+
+            referenceResolver.AddReference(id, val.Buffer);
         }
-
-        //misplaced curly bracket ?!
-
-        return val;
     }
 
-    public override void Write(Utf8JsonWriter writer, DataBuffer value, JsonSerializerOptions options)
+    public static void Write(Utf8JsonWriter writer, IRedBufferWrapper value, JsonSerializerOptions options)
     {
         writer.WriteStartObject();
 
-        var refId = _referenceResolver.GetReference(value.Buffer, out var alreadyExists);
+        WriteData(writer, value, options);
+
+        writer.WriteEndObject();
+    }
+
+    public static void Write(Utf8JsonWriter writer, IRedBufferWrapper value, JsonSerializerOptions options, ReferenceResolver<RedBuffer> referenceResolver)
+    {
+        writer.WriteStartObject();
+
+        var refId = referenceResolver.GetReference(value.Buffer, out var alreadyExists);
         if (alreadyExists)
         {
             writer.WriteString("BufferRefId", refId);
@@ -547,335 +778,35 @@ public class DataBufferConverter : JsonConverter<DataBuffer>, ICustomRedConverte
         else
         {
             writer.WriteString("BufferId", refId);
-            writer.WriteNumber("Flags", value.Buffer.Flags);
-
-            if (value.Buffer.Data is CookedInstanceTransformsBuffer or CR2WList or RedPackage or worldNodeDataBuffer or WorldTransformsBuffer or CollisionBuffer)
-            {
-                writer.WriteString("Type", value.Buffer.Data.GetType().AssemblyQualifiedName);
-
-                writer.WritePropertyName("Data");
-                JsonSerializer.Serialize(writer, value.Buffer.Data, options);
-            }
-            else
-            {
-                writer.WritePropertyName("Bytes");
-                writer.WriteBase64StringValue(value.Buffer.GetBytes());
-            }
+            WriteData(writer, value, options);
         }
 
         writer.WriteEndObject();
     }
-}
 
-public class SerializationDeferredDataBufferConverter : JsonConverter<SerializationDeferredDataBuffer>, ICustomRedConverter
-{
-    private readonly ReferenceResolver<RedBuffer> _referenceResolver;
-
-    public SerializationDeferredDataBufferConverter(ReferenceResolver<RedBuffer> referenceResolver) => _referenceResolver = referenceResolver;
-
-
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
-    public override SerializationDeferredDataBuffer? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public static void WriteData(Utf8JsonWriter writer, IRedBufferWrapper value, JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Null)
+        writer.WriteNumber("Flags", value.Buffer.Flags);
+
+        if (value.Buffer.Data is CookedInstanceTransformsBuffer or CR2WList or RedPackage or worldNodeDataBuffer or WorldTransformsBuffer or CollisionBuffer or CR2WWrapper or FoliageBuffer or AnimFacialSetupBakedDataBuffer or AnimFacialSetupMainPosesDataBuffer or AnimFacialSetupCorrectivePosesDataBuffer)
         {
-            return null;
-        }
+            writer.WriteString("Type", value.Buffer.Data.GetType().AssemblyQualifiedName);
 
-        if (reader.TokenType != JsonTokenType.StartObject)
-        {
-            throw new JsonException();
-        }
-
-        string? id = null;
-        var val = new SerializationDeferredDataBuffer();
-
-        while (reader.Read())
-        {
-            if (reader.TokenType == JsonTokenType.EndObject)
-            {
-                break;
-            }
-
-            if (reader.TokenType != JsonTokenType.PropertyName)
-            {
-                throw new JsonException();
-            }
-
-            var propertyName = reader.GetString();
-            reader.Read();
-
-            switch (propertyName)
-            {
-                case "BufferId":
-                {
-                    if (reader.TokenType != JsonTokenType.String)
-                    {
-                        throw new JsonException();
-                    }
-
-                    id = reader.GetString();
-                    if (id == null)
-                    {
-                        throw new JsonException();
-                    }
-
-                    break;
-                }
-
-                case "BufferRefId":
-                {
-                    if (reader.TokenType != JsonTokenType.String)
-                    {
-                        throw new JsonException();
-                    }
-
-                    var refId = reader.GetString();
-                    if (refId == null)
-                    {
-                        throw new JsonException();
-                    }
-
-                    val.Buffer = _referenceResolver.ResolveReference(refId);
-
-                    break;
-                }
-
-                case "Data":
-                {
-                    var converter = options.GetConverter(typeof(RedPackage));
-                    if (converter is ICustomRedConverter conv)
-                    {
-                        val.Data = (IParseableBuffer?)conv.ReadRedType(ref reader, typeof(RedPackage), options);
-                    }
-                    else
-                    {
-                        throw new JsonException();
-                    }
-
-                    break;
-                }
-
-                case "Flags":
-                {
-                    if (reader.TokenType != JsonTokenType.Number)
-                    {
-                        throw new JsonException();
-                    }
-
-                    var flags = reader.GetUInt32();
-
-                    reader.Read();
-                    if (reader.TokenType != JsonTokenType.PropertyName)
-                    {
-                        throw new JsonException();
-                    }
-
-                    propertyName = reader.GetString();
-                    if (propertyName != "Bytes")
-                    {
-                        throw new JsonException();
-                    }
-
-                    reader.Read();
-                    if (reader.TokenType != JsonTokenType.String)
-                    {
-                        throw new JsonException();
-                    }
-
-                    var bytes = reader.GetBytesFromBase64();
-                    val.Buffer = RedBuffer.CreateBuffer(flags, bytes);
-
-                    break;
-                }
-
-                default:
-                {
-                    throw new JsonException();
-                }
-            }
-        }
-
-        if (id != null)
-        {
-            _referenceResolver.AddReference(id, val.Buffer);
-        }
-
-        return val;
-    }
-
-    public override void Write(Utf8JsonWriter writer, SerializationDeferredDataBuffer value, JsonSerializerOptions options)
-    {
-        writer.WriteStartObject();
-
-        var refId = _referenceResolver.GetReference(value.Buffer, out var alreadyExists);
-        if (alreadyExists)
-        {
-            writer.WriteString("BufferRefId", refId);
-        }
-        else
-        {
-            writer.WriteString("BufferId", refId);
-
-            if (value.Buffer.Data is RedPackage pkg)
-            {
-                writer.WritePropertyName("Data");
-                JsonSerializer.Serialize(writer, pkg, options);
-            }
-            else
-            {
-                writer.WriteNumber("Flags", value.Buffer.Flags);
-                writer.WritePropertyName("Bytes");
-                writer.WriteBase64StringValue(value.Buffer.GetBytes());
-            }
-        }
-
-        writer.WriteEndObject();
-    }
-}
-
-public class SharedDataBufferConverter : JsonConverter<SharedDataBuffer>, ICustomRedConverter
-{
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
-    public override SharedDataBuffer? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        if (reader.TokenType == JsonTokenType.Null)
-        {
-            return null;
-        }
-
-        if (reader.TokenType != JsonTokenType.StartObject)
-        {
-            throw new JsonException();
-        }
-
-        reader.Read();
-
-        if (reader.TokenType != JsonTokenType.PropertyName)
-        {
-            throw new JsonException();
-        }
-
-        var propertyName = reader.GetString();
-        reader.Read();
-
-        var val = new SharedDataBuffer();
-        switch (propertyName)
-        {
-            case "File":
-            {
-                //var dto = RedJsonSerializer.Deserialize<RedFileDto>(json);
-
-                var converter = options.GetConverter(typeof(RedFileDto));
-                if (converter is ICustomRedConverter conv)
-                {
-                    var obj = conv.ReadRedType(ref reader, typeof(RedFileDto), options);
-                    val.File = ((RedFileDto?)obj)?.Data;
-                }
-                else
-                {
-                    throw new JsonException();
-                }
-
-                break;
-            }
-
-            case "Data":
-            {
-                var converter = options.GetConverter(typeof(RedPackage));
-                if (converter is ICustomRedConverter conv)
-                {
-                    val.Data = (IParseableBuffer?)conv.ReadRedType(ref reader, typeof(RedPackage), options);
-                }
-                else
-                {
-                    throw new JsonException();
-                }
-
-                break;
-            }
-
-            case "Flags":
-            {
-                if (reader.TokenType != JsonTokenType.Number)
-                {
-                    throw new JsonException();
-                }
-
-                var flags = reader.GetUInt32();
-
-                reader.Read();
-                if (reader.TokenType != JsonTokenType.PropertyName)
-                {
-                    throw new JsonException();
-                }
-
-                propertyName = reader.GetString();
-                if (propertyName != "Bytes")
-                {
-                    throw new JsonException();
-                }
-
-                reader.Read();
-                if (reader.TokenType != JsonTokenType.String)
-                {
-                    throw new JsonException();
-                }
-
-                var bytes = reader.GetBytesFromBase64();
-                val.Buffer = RedBuffer.CreateBuffer(flags, bytes);
-
-                break;
-            }
-
-            default:
-            {
-                throw new JsonException();
-            }
-        }
-
-        reader.Read();
-        if (reader.TokenType != JsonTokenType.EndObject)
-        {
-            throw new JsonException();
-        }
-
-        return val;
-    }
-
-    public override void Write(Utf8JsonWriter writer, SharedDataBuffer value, JsonSerializerOptions options)
-    {
-        writer.WriteStartObject();
-
-        if (value.File is CR2WFile file)
-        {
-            writer.WritePropertyName("File");
-            JsonSerializer.Serialize(writer, new RedFileDto(file), options);
-        }
-        else if (value.Data is RedPackage pkg)
-        {
             writer.WritePropertyName("Data");
-            JsonSerializer.Serialize(writer, pkg, options);
+            JsonSerializer.Serialize(writer, value.Buffer.Data, options);
         }
         else
         {
-            writer.WriteNumber("Flags", value.Buffer.Flags);
             writer.WritePropertyName("Bytes");
             writer.WriteBase64StringValue(value.Buffer.GetBytes());
         }
-
-        writer.WriteEndObject();
     }
 }
 
 #endregion BufferConverter
 
-public class LocalizationStringConverter : JsonConverter<LocalizationString>, ICustomRedConverter
+public class LocalizationStringConverter : CustomRedConverter<LocalizationString>
 {
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override LocalizationString? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -907,12 +838,12 @@ public class LocalizationStringConverter : JsonConverter<LocalizationString>, IC
                 case "unk1":
                 {
                     reader.Read();
-                    if (reader.TokenType != JsonTokenType.Number)
+                    if (reader.TokenType != JsonTokenType.String && reader.TokenType != JsonTokenType.Number)
                     {
                         throw new JsonException();
                     }
 
-                    result.Unk1 = reader.GetUInt64();
+                    result.Unk1 = JsonSerializer.Deserialize<ulong>(ref reader, options);
                     break;
                 }
 
@@ -942,7 +873,9 @@ public class LocalizationStringConverter : JsonConverter<LocalizationString>, IC
     {
         writer.WriteStartObject();
 
-        writer.WriteNumber("unk1", value.Unk1);
+        writer.WritePropertyName("unk1");
+        JsonSerializer.Serialize(writer, value.Unk1, options);
+
         writer.WriteString("value", value.Value);
 
         writer.WriteEndObject();
@@ -968,10 +901,8 @@ public class CLegacySingleChannelCurveConverterFactory : JsonConverterFactory
     }
 }
 
-public class CLegacySingleChannelCurveConverter : JsonConverter<IRedLegacySingleChannelCurve>, ICustomRedConverter
+public class CLegacySingleChannelCurveConverter : CustomRedConverter<IRedLegacySingleChannelCurve>
 {
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override IRedLegacySingleChannelCurve? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -1196,10 +1127,8 @@ public class MultiChannelCurveConverterFactory : JsonConverterFactory
     }
 }
 
-public class MultiChannelCurveConverter : JsonConverter<IRedMultiChannelCurve>, ICustomRedConverter
+public class MultiChannelCurveConverter : CustomRedConverter<IRedMultiChannelCurve>
 {
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override IRedMultiChannelCurve? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -1333,118 +1262,284 @@ public class MultiChannelCurveConverter : JsonConverter<IRedMultiChannelCurve>, 
 
 #endregion MultiChannelCurveConverter
 
-public class ResourcePathConverter : JsonConverter<ResourcePath>, ICustomRedConverter
+public class ResourcePathConverter : CustomRedConverter<ResourcePath>
 {
-    public object ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override ResourcePath Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (RedJsonSerializer.IsOlderThen("0.0.7"))
+        {
+            return ReadV1(ref reader, typeToConvert, options);
+        }
+
+        return ReadV2(ref reader, typeToConvert, options);
+    }
+
+    public ResourcePath ReadV1(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
         {
             return (ResourcePath)RedTypeManager.CreateRedType(typeToConvert);
         }
 
-        if (reader.TokenType == JsonTokenType.String)
-        {
-            return reader.GetString().NotNull();
-        }
-        else if (reader.TokenType == JsonTokenType.Number)
+        if (reader.TokenType == JsonTokenType.Number)
         {
             return reader.GetUInt64();
         }
-        else
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var str = reader.GetString();
+            if (str == null)
+            {
+                throw new JsonException();
+            }
+
+            if (ulong.TryParse(str, out var value))
+            {
+                return value;
+            }
+
+            return str;
+        }
+
+        throw new JsonException();
+    }
+
+    public ResourcePath ReadV2(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject)
         {
             throw new JsonException();
+        }
+
+        var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(ref reader, options);
+        if (dict == null || dict.Count != 3)
+        {
+            throw new JsonException();
+        }
+
+        if (dict["$type"] != nameof(ResourcePath))
+        {
+            throw new JsonException();
+        }
+
+        switch (dict["$storage"])
+        {
+            case "string":
+                return dict["$value"];
+
+            case "uint64":
+                return ulong.Parse(dict["$value"]);
+
+            default:
+                throw new JsonException();
         }
     }
 
     public override void Write(Utf8JsonWriter writer, ResourcePath value, JsonSerializerOptions options)
     {
-        var resolved = value.GetResolvedText();
-        if (!string.IsNullOrEmpty(resolved))
+        writer.WriteStartObject();
+
+        writer.WriteString("$type", "ResourcePath");
+        if (value.TryGetResolvedText(out var str))
         {
-            writer.WriteStringValue(resolved);
+            writer.WriteString("$storage", "string");
+            writer.WriteString("$value", str);
         }
         else
         {
-            writer.WriteNumberValue(value);
+            writer.WriteString("$storage", "uint64");
+            writer.WriteString("$value", ((ulong)value).ToString());
         }
+
+        writer.WriteEndObject();
     }
 }
 
-public class NodeRefConverter : JsonConverter<NodeRef>, ICustomRedConverter
+public class NodeRefConverter : CustomRedConverter<NodeRef>
 {
-    public object ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override NodeRef Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (RedJsonSerializer.IsOlderThen("0.0.7"))
+        {
+            return ReadV1(ref reader, typeToConvert, options);
+        }
+
+        return ReadV2(ref reader, typeToConvert, options);
+    }
+
+    public NodeRef ReadV1(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
         {
             return (NodeRef)RedTypeManager.CreateRedType(typeToConvert);
         }
 
-        if (reader.TokenType == JsonTokenType.String)
-        {
-            return reader.GetString().NotNull();
-        }
-        else if (reader.TokenType == JsonTokenType.Number)
+        if (reader.TokenType == JsonTokenType.Number)
         {
             return reader.GetUInt64();
         }
-        else
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var str = reader.GetString();
+            if (str == null)
+            {
+                throw new JsonException();
+            }
+
+            if (ulong.TryParse(str, out var value))
+            {
+                return value;
+            }
+
+            return str;
+        }
+
+        throw new JsonException();
+    }
+
+    public NodeRef ReadV2(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject)
         {
             throw new JsonException();
+        }
+
+        var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(ref reader, options);
+        if (dict == null || dict.Count != 3)
+        {
+            throw new JsonException();
+        }
+
+        if (dict["$type"] != nameof(NodeRef))
+        {
+            throw new JsonException();
+        }
+
+        switch (dict["$storage"])
+        {
+            case "string":
+                return dict["$value"];
+
+            case "uint64":
+                return ulong.Parse(dict["$value"]);
+
+            default:
+                throw new JsonException();
         }
     }
 
     public override void Write(Utf8JsonWriter writer, NodeRef value, JsonSerializerOptions options)
     {
-        var resolved = value.GetResolvedText();
-        if (!string.IsNullOrEmpty(resolved))
+        writer.WriteStartObject();
+
+        writer.WriteString("$type", "NodeRef");
+        if (value.TryGetResolvedText(out var str))
         {
-            writer.WriteStringValue(resolved);
+            writer.WriteString("$storage", "string");
+            writer.WriteString("$value", str);
         }
         else
         {
-            writer.WriteNumberValue(value);
+            writer.WriteString("$storage", "uint64");
+            writer.WriteString("$value", ((ulong)value).ToString());
         }
+
+        writer.WriteEndObject();
     }
 }
 
-public class TweakDBIDConverter : JsonConverter<TweakDBID>, ICustomRedConverter
+public class TweakDBIDConverter : CustomRedConverter<TweakDBID>
 {
-    public object ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override TweakDBID Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (RedJsonSerializer.IsOlderThen("0.0.7"))
+        {
+            return ReadV1(ref reader, typeToConvert, options);
+        }
+
+        return ReadV2(ref reader, typeToConvert, options);
+    }
+
+    public TweakDBID ReadV1(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
         {
-            return (TweakDBID)RedTypeManager.CreateRedType(typeToConvert);
+            return (TweakDBID)RedTypeManager.CreateRedType(typeof(TweakDBID));
+        }
+
+        if (reader.TokenType == JsonTokenType.Number)
+        {
+            return reader.GetUInt64();
         }
 
         if (reader.TokenType == JsonTokenType.String)
         {
-            return reader.GetString().NotNull();
+            var str = reader.GetString();
+            if (str == null)
+            {
+                throw new JsonException();
+            }
+
+            if (ulong.TryParse(str, out var value))
+            {
+                return value;
+            }
+
+            return str;
         }
-        else if (reader.TokenType == JsonTokenType.Number)
-        {
-            return reader.GetUInt64();
-        }
-        else
+
+        throw new JsonException();
+    }
+
+    public TweakDBID ReadV2(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject)
         {
             throw new JsonException();
+        }
+
+        var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(ref reader, options);
+        if (dict == null || dict.Count != 3)
+        {
+            throw new JsonException();
+        }
+
+        if (dict["$type"] != nameof(TweakDBID))
+        {
+            throw new JsonException();
+        }
+
+        switch (dict["$storage"])
+        {
+            case "string":
+                return dict["$value"];
+
+            case "uint64":
+                return ulong.Parse(dict["$value"]);
+
+            default:
+                throw new JsonException();
         }
     }
 
     public override void Write(Utf8JsonWriter writer, TweakDBID value, JsonSerializerOptions options)
     {
-        if (((string)value!) != null)
+        writer.WriteStartObject();
+
+        writer.WriteString("$type", "TweakDBID");
+        if (value.TryGetResolvedText(out var str))
         {
-            writer.WriteStringValue(value);
+            writer.WriteString("$storage", "string");
+            writer.WriteString("$value", str);
         }
         else
         {
-            writer.WriteNumberValue(value);
+            writer.WriteString("$storage", "uint64");
+            writer.WriteString("$value", ((ulong)value).ToString());
         }
+
+        writer.WriteEndObject();
     }
 }

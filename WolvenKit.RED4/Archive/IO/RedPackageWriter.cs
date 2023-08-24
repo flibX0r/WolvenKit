@@ -45,7 +45,7 @@ public partial class RedPackageWriter : Red4Writer
         var typeInfo = RedReflection.GetTypeInfo(cls);
 
         var nonDefaultProperties = new List<ExtendedPropertyInfo>();
-        foreach (var propertyInfo in typeInfo.GetWritableProperties())
+        foreach (var propertyInfo in cls.GetWritableProperties())
         {
             ArgumentNullException.ThrowIfNull(propertyInfo.RedName);
 
@@ -78,7 +78,7 @@ public partial class RedPackageWriter : Red4Writer
             }
             else
             {
-                redTypeName = RedReflection.GetRedTypeFromCSType(propertyInfo.Type, propertyInfo.Flags.Clone());
+                redTypeName = RedReflection.GetRedTypeFromCSType(propertyInfo.Type, propertyInfo.Flags);
             }
 
             BaseStream.Position = descStartPosition + (nonDefaultProperties.IndexOf(propertyInfo) * 8);
@@ -101,6 +101,21 @@ public partial class RedPackageWriter : Red4Writer
         if (cls is IRedAppendix app)
         {
             app.Write(this);
+        }
+    }
+
+    protected override void GenerateBufferBytes(RedBuffer buffer)
+    {
+        if (buffer.Data is ModifiersBuffer modifiersBuffer)
+        {
+            using var ms = new MemoryStream();
+            using var modifiersBufferWriter = new ModifiersBufferWriter(ms);
+
+            modifiersBufferWriter.WriteBuffer(modifiersBuffer);
+
+            var newData = ms.ToArray();
+
+            buffer.SetBytes(newData);
         }
     }
 

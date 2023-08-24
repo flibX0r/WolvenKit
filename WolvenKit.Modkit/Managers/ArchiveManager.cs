@@ -30,6 +30,7 @@ namespace WolvenKit.RED4.CR2W.Archive
         private readonly SourceList<RedFileSystemModel> _rootCache;
 
         private readonly SourceList<RedFileSystemModel> _modCache;
+        private bool _isManagerLoading;
         private bool _isManagerLoaded;
 
         private static readonly List<string> s_loadOrder = new() { "memoryresident", "basegame", "audio", "lang" };
@@ -51,6 +52,12 @@ namespace WolvenKit.RED4.CR2W.Archive
         #endregion Constructors
 
         #region properties
+
+        public override bool IsManagerLoading
+        {
+            get => _isManagerLoading;
+            set => SetProperty(ref _isManagerLoading, value);
+        }
 
         public override bool IsManagerLoaded
         {
@@ -149,6 +156,8 @@ namespace WolvenKit.RED4.CR2W.Archive
                 return;
             }
 
+            IsManagerLoading = true;
+
             var archiveFiles = Directory.GetFiles(archivedir.FullName, "*.archive").ToList();
             archiveFiles.Sort(CompareArchives);
 
@@ -157,6 +166,7 @@ namespace WolvenKit.RED4.CR2W.Archive
                 LoadArchive(file);
             }
 
+            IsManagerLoading = false;
             IsManagerLoaded = true;
         }
 
@@ -176,6 +186,8 @@ namespace WolvenKit.RED4.CR2W.Archive
             {
                 return;
             }
+
+            IsManagerLoading = true;
 
             var archivedir = Path.Combine(di.Parent.Parent.FullName, "archive", "pc", "content");
 
@@ -217,6 +229,7 @@ namespace WolvenKit.RED4.CR2W.Archive
             sw2.Stop();
             _logger.Success($"Archive Manager loaded in {sw2.ElapsedMilliseconds}ms");
 
+            IsManagerLoading = false;
             IsManagerLoaded = true;
         }
 
@@ -264,6 +277,32 @@ namespace WolvenKit.RED4.CR2W.Archive
                 return;
             }
 
+            var importError = false;
+            foreach (var (_, gameFile) in archive.Files)
+            {
+                try
+                {
+                    using var ms = new MemoryStream();
+                    archive.ExtractFile(gameFile, ms);
+
+                    if (_wolvenkitFileService.TryReadRed4FileHeaders(ms, out var info))
+                    {
+                        info.GetImports();
+                    }
+                }
+                catch (Exception)
+                {
+                    importError = true;
+                    _logger.Debug($"Error while loading the following mod file: {gameFile.FileName}");
+                }
+            }
+            archive.ReleaseFileHandle();
+
+            if (importError)
+            {
+                _logger.Warning($"Error while loading the following mod archive: {filename}");
+            }
+
             ModArchives.AddOrUpdate(archive);
         }
 
@@ -281,6 +320,8 @@ namespace WolvenKit.RED4.CR2W.Archive
             {
                 return;
             }
+
+            IsManagerLoading = true;
 
             ModArchives.Clear();
 
@@ -325,6 +366,7 @@ namespace WolvenKit.RED4.CR2W.Archive
                 innerCache.Add(ModRoots);
             });
 
+            IsManagerLoading = false;
             IsManagerLoaded = true;
         }
 

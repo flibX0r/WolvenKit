@@ -1,4 +1,3 @@
-#nullable enable
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
@@ -6,10 +5,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Semver;
 using WolvenKit.Common.Conversion;
 using WolvenKit.Core.Extensions;
-using WolvenKit.Core.Interfaces;
 using WolvenKit.RED4.Archive.Buffer;
 using WolvenKit.RED4.Archive.CR2W;
 using WolvenKit.RED4.Types;
@@ -18,10 +17,8 @@ namespace WolvenKit.RED4.CR2W.JSON;
 
 #region Internal
 
-public class CByteArrayConverter : JsonConverter<CByteArray>, ICustomRedConverter
+public class CByteArrayConverter : CustomRedConverter<CByteArray>
 {
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override CByteArray? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -35,10 +32,8 @@ public class CByteArrayConverter : JsonConverter<CByteArray>, ICustomRedConverte
     public override void Write(Utf8JsonWriter writer, CByteArray value, JsonSerializerOptions options) => writer.WriteBase64StringValue((byte[])value);
 }
 
-public class CKeyValuePairConverter : JsonConverter<CKeyValuePair>, ICustomRedConverter
+public class CKeyValuePairConverter : CustomRedConverter<CKeyValuePair>
 {
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override CKeyValuePair? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -157,15 +152,13 @@ public class HandleConverterFactory : JsonConverterFactory
     }
 }
 
-public class HandleConverter : JsonConverter<IRedBaseHandle>, ICustomRedConverter
+public class HandleConverter : CustomRedConverter<IRedBaseHandle>
 {
     private readonly ReferenceResolver<RedBaseClass> _referenceResolver;
 
     public HandleConverter(ReferenceResolver<RedBaseClass> referenceResolver) => _referenceResolver = referenceResolver;
 
     public override bool HandleNull => true;
-
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
 
     public override IRedBaseHandle? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -207,17 +200,16 @@ public class HandleConverter : JsonConverter<IRedBaseHandle>, ICustomRedConverte
                     }
 
                     id = reader.GetString();
+                    if (id == null)
+                    {
+                        throw new JsonException();
+                    }
 
                     break;
                 }
 
                 case "Data":
                 {
-                    if (id == null)
-                    {
-                        throw new JsonException();
-                    }
-
                     if (reader.TokenType != JsonTokenType.StartObject)
                     {
                         throw new JsonException();
@@ -326,10 +318,8 @@ public class ResourceConverterFactory : JsonConverterFactory
     }
 }
 
-public class ResourceReferenceConverter : JsonConverter<IRedRef>, ICustomRedConverter
+public class ResourceReferenceConverter : CustomRedConverter<IRedRef>
 {
-    public object ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override IRedRef Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -446,14 +436,11 @@ public class ClassConverterFactory : JsonConverterFactory
     }
 }
 
-public class RedClassConverter : JsonConverter<RedBaseClass>, ICustomRedConverter
+public class RedClassConverter : CustomRedConverter<RedBaseClass>
 {
     private readonly ReferenceResolver<RedBaseClass> _referenceResolver;
 
     public RedClassConverter(ReferenceResolver<RedBaseClass> referenceResolver) => _referenceResolver = referenceResolver;
-
-
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
 
     public RedBaseClass? CustomRead(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options, string? refId)
     {
@@ -668,7 +655,31 @@ public class RedClassConverter : JsonConverter<RedBaseClass>, ICustomRedConverte
             var valInfo = typeInfo.PropertyInfos.FirstOrDefault(x => x.RedName == key);
             if (valInfo == null)
             {
-                throw new JsonException();
+                reader.Read();
+
+                if (reader.TokenType != JsonTokenType.StartObject)
+                {
+                    throw new JsonException();
+                }
+
+                reader.Read();
+
+                if (reader.TokenType != JsonTokenType.PropertyName)
+                {
+                    throw new JsonException();
+                }
+                propertyName = reader.GetString();
+                if (propertyName != "$type")
+                {
+                    throw new JsonException();
+                }
+                reader.Read();
+
+                var propertyTypeStr = reader.GetString().NotNull();
+                var (propertyType, _) = RedReflection.GetCSTypeFromRedType(propertyTypeStr);
+                valInfo = cls.AddDynamicProperty(key, propertyType);
+
+                reader.Read();
             }
 
             object? val;
@@ -676,7 +687,9 @@ public class RedClassConverter : JsonConverter<RedBaseClass>, ICustomRedConverte
             if (converter is ICustomRedConverter conv)
             {
                 reader.Read();
-                val = conv.ReadRedType(ref reader, valInfo.Type, options);
+
+                var flags = valInfo.Flags;
+                val = conv.ReadRedType(ref reader, valInfo.Type, options, flags.MoveNext() ? flags : Flags.Empty);
 
                 if (val is IRedBufferPointer buf)
                 {
@@ -701,7 +714,12 @@ public class RedClassConverter : JsonConverter<RedBaseClass>, ICustomRedConverte
                 val = JsonSerializer.Deserialize(ref reader, valInfo.Type, options);
             }
 
-            if (!typeInfo.SerializeDefault && RedReflection.IsDefault(cls.GetType(), valInfo.RedName!, val))
+            if (valInfo.IsDynamic)
+            {
+                reader.Read();
+            }
+
+            if (!typeInfo.SerializeDefault && valInfo.IsDefault(val))
             {
                 continue;
             }
@@ -727,6 +745,27 @@ public class RedClassConverter : JsonConverter<RedBaseClass>, ICustomRedConverte
             {
                 writer.WritePropertyName(propertyInfo.RedName);
                 JsonSerializer.Serialize(writer, (object?)value.GetProperty(propertyInfo.RedName), options);
+            }
+            else if (propertyInfo is { Name: { } })
+            {
+                //Locator.Current.GetService<ILoggerService>()?.Error($"propertyInfo was null i guess");
+            }
+        }
+
+        foreach (var propertyInfo in value.GetDynamicProperties().OrderBy(x => x.RedName))
+        {
+            if (propertyInfo.RedName is not null)
+            {
+                writer.WritePropertyName(propertyInfo.RedName);
+
+                writer.WriteStartObject();
+
+                writer.WriteString("$type", propertyInfo.RedType);
+
+                writer.WritePropertyName("$value");
+                JsonSerializer.Serialize(writer, (object?)value.GetProperty(propertyInfo.RedName), options);
+
+                writer.WriteEndObject();
             }
             else if (propertyInfo is { Name: { } })
             {
@@ -771,13 +810,11 @@ public class Red4FileConverterFactory : JsonConverterFactory
     }
 }
 
-public class CR2WFileConverter : JsonConverter<CR2WFile>, ICustomRedConverter
+public class CR2WFileConverter : CustomRedConverter<CR2WFile>
 {
     private readonly ReferenceResolver<RedBaseClass> _referenceResolver;
 
     public CR2WFileConverter(ReferenceResolver<RedBaseClass> classResolver) => _referenceResolver = classResolver;
-
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
 
     public override CR2WFile Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -1110,10 +1147,8 @@ public class CR2WFileConverter : JsonConverter<CR2WFile>, ICustomRedConverter
     }
 }
 
-public class RedPackageConverter : JsonConverter<RedPackage>, ICustomRedConverter
+public class RedPackageConverter : CustomRedConverter<RedPackage>
 {
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
-
     public override RedPackage? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -1216,7 +1251,7 @@ public class RedPackageConverter : JsonConverter<RedPackage>, ICustomRedConverte
                             break;
                         }
 
-                        result.RootCruids.Add(reader.GetUInt64());
+                        result.RootCruids.Add(JsonSerializer.Deserialize<CRUID>(ref reader, options));
                     }
 
                     break;

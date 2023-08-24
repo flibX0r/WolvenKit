@@ -2,9 +2,9 @@ using static WolvenKit.RED4.Types.Enums;
 
 namespace WolvenKit.RED4.Types
 {
-	public partial class gsmBaseRequestsHandler : inkISystemRequestsHandler
+	public abstract partial class gsmBaseRequestsHandler : inkISystemRequestsHandler
 	{
-		[Ordinal(13)] 
+		[Ordinal(15)] 
 		[RED("SavingComplete")] 
 		public gsmSavingRequesResult SavingComplete
 		{

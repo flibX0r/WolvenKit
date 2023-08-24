@@ -16,21 +16,24 @@ using WolvenKit.App.ViewModels.Tools;
 using WolvenKit.Common;
 using WolvenKit.Common.Model.Arguments;
 using WolvenKit.Core.Extensions;
+using WolvenKit.Helpers;
 using WolvenKit.RED4.CR2W;
 using WolvenKit.RED4.Types;
 using WolvenKit.Views.Exporters;
 
 namespace WolvenKit.Views.Importers;
 
-public partial class TextureImportView : ReactiveUserControl<TextureImportViewModel>
+public partial class ImportView : ReactiveUserControl<ImportViewModel>
 {
-    public TextureImportView()
+    public ImportView()
     {
         InitializeComponent();
 
+        ImportGrid.FilterRowCellRenderers.Add("TextBoxExt", new GridFilterRowTextBoxRendererExt());
+
         this.WhenActivated(disposables =>
         {
-            if (DataContext is TextureImportViewModel viewModel)
+            if (DataContext is ImportViewModel viewModel)
             {
                 SetCurrentValue(ViewModelProperty, viewModel);
             }

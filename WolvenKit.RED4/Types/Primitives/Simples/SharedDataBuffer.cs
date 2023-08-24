@@ -14,7 +14,10 @@ public class SharedDataBuffer : IRedBufferWrapper, IRedPrimitive, IEquatable<Sha
         set => Buffer.Data = value;
     }
 
-    public Red4File? File { get; set; }
+    public SharedDataBuffer()
+    {
+        Buffer = new RedBuffer();
+    }
 
     public bool Equals(SharedDataBuffer? other)
     {
@@ -65,7 +68,7 @@ public class SharedDataBuffer : IRedBufferWrapper, IRedPrimitive, IEquatable<Sha
 
     public object DeepCopy()
     {
-        var db = new SharedDataBuffer();
+        var db = new SharedDataBuffer { Buffer = Buffer.Clone() };
         if (Data is IRedCloneable irc)
         {
             db.Data = (IParseableBuffer)irc.DeepCopy();

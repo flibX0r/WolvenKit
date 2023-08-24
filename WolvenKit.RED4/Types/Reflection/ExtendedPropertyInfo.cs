@@ -4,7 +4,7 @@ namespace WolvenKit.RED4.Types;
 
 public class ExtendedPropertyInfo
 {
-    private Flags _flags;
+    private Flags _flags = Flags.Empty;
     internal bool _isDefaultSet;
 
     public ExtendedPropertyInfo(ExtendedTypeInfo containingType, string name, string type)
@@ -15,6 +15,19 @@ public class ExtendedPropertyInfo
 
         RedName = name;
         RedType = type;
+    }
+
+    public ExtendedPropertyInfo(ExtendedTypeInfo containingType, string name, Type type)
+    {
+        IsDynamic = true;
+
+        ContainingTypeInfo = containingType;
+
+        Name = name;
+        Type = type;
+
+        RedName = Name;
+        RedType = RedReflection.GetRedTypeFromCSType(Type);
     }
 
     public ExtendedPropertyInfo(ExtendedTypeInfo containingType, PropertyInfo propertyInfo)
@@ -37,9 +50,9 @@ public class ExtendedPropertyInfo
         }
 
         var propName = $"{ContainingTypeInfo.Type.Name}.{Name}";
-        if (Patches.AttributePatches.ContainsKey(propName))
+        if (Patches.AttributePatches.TryGetValue(propName, out var patches))
         {
-            foreach (var attribute in Patches.AttributePatches[propName])
+            foreach (var attribute in patches)
             {
                 ProcessAttribute(attribute);
             }
@@ -55,7 +68,7 @@ public class ExtendedPropertyInfo
     public string Name { get; }
     public string? RedName { get; private set; }
     public string RedType { get; }
-    public Flags Flags => _flags != null ? _flags.Clone() : Flags.Empty;
+    public Flags Flags => _flags.Clone();
     public bool IsIgnored { get; internal set; }
 
     public bool IsDynamic { get; }
@@ -97,13 +110,35 @@ public class ExtendedPropertyInfo
         }
     }
 
-    public bool IsDefault(object? value)
+    private void SetDefaultValue()
     {
-        if (!_isDefaultSet)
+        if (_isDefaultSet)
+        {
+            return;
+        }
+
+        if (!IsDynamic)
         {
             DefaultValue = RedReflection.GetClassDefaultValue(ContainingTypeInfo.Type, this);
-            _isDefaultSet = true;
         }
+        else
+        {
+            DefaultValue = RedTypeManager.CreateRedType(Type);
+        }
+
+        _isDefaultSet = true;
+    }
+
+    public object? GetDefaultValue()
+    {
+        SetDefaultValue();
+
+        return DefaultValue;
+    }
+
+    public bool IsDefault(object? value)
+    {
+        SetDefaultValue();
 
         return Equals(DefaultValue, value);
     }

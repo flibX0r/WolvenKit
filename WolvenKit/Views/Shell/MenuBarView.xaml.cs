@@ -1,25 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Reactive;
 using System.Reactive.Disposables;
-using System.Reactive.Linq;
-using System.Text;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using ReactiveUI;
 using Splat;
 using WolvenKit.App.Interaction;
 using WolvenKit.App.ViewModels.Shell;
-using WolvenKit.App.ViewModels.Tools;
-using WolvenKit.Views.Dialogs;
-using WolvenKit.Views.Dialogs.Windows;
 
 namespace WolvenKit.Views.Shell;
 /// <summary>
@@ -168,6 +152,11 @@ public partial class MenuBarView : ReactiveUserControl<MenuBarViewModel>
                     view => view.MenuItemShowTextureExporter)
                 .DisposeWith(disposables);
 
+            this.BindCommand(ViewModel,
+                    viewModel => viewModel.MainViewModel.ShowHashToolCommand,
+                    view => view.MenuItemShowHashTool)
+                .DisposeWith(disposables);
+
             // Game
             this.BindCommand(ViewModel,
                         viewModel => viewModel.MainViewModel.LaunchGameCommand,
@@ -238,8 +227,8 @@ public partial class MenuBarView : ReactiveUserControl<MenuBarViewModel>
         });
     }
 
-    private void SetLayoutToDefault(object sender, RoutedEventArgs e) => DockingAdapter.G_Dock.LoadLayoutDefault();
-    private void SaveLayoutToProject(object sender, RoutedEventArgs e) => DockingAdapter.G_Dock.SaveLayoutToProject();
+    private void SetLayoutToDefault(object sender, RoutedEventArgs e) => DockingAdapter.G_Dock.LoadDefaultLayout();
+    private void SaveLayoutToProject(object sender, RoutedEventArgs e) => DockingAdapter.G_Dock.SaveLayout();
     private void GenerateMaterialRepoButton_Click(object sender, RoutedEventArgs e)
     {
         Interactions.ShowMaterialRepositoryView();

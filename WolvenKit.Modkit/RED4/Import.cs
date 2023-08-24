@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using DynamicData.Kernel;
 using WolvenKit.Common;
 using WolvenKit.Common.Extensions;
 using WolvenKit.Common.Model;
@@ -48,8 +50,6 @@ namespace WolvenKit.Modkit.RED4
 
             #endregion
 
-            //var rawRelative = new RedRelativePath(inDir, rawFile.GetRelativePath(inDir));
-
             // check if the file can be directly imported
             // if not, rebuild buffers
             if (!Enum.TryParse(rawRelative.Extension, true, out ERawFileFormat extAsEnum))
@@ -61,7 +61,8 @@ namespace WolvenKit.Modkit.RED4
             return extAsEnum switch
             {
                 ERawFileFormat.bmp or ERawFileFormat.jpg or ERawFileFormat.png or ERawFileFormat.tiff or ERawFileFormat.tga or ERawFileFormat.dds => HandleTextures(rawRelative, outDir, args),
-                ERawFileFormat.fbx or ERawFileFormat.gltf or ERawFileFormat.glb => ImportGltf(rawRelative, outDir, args.Get<GltfImportArgs>()),
+                ERawFileFormat.gltf or ERawFileFormat.glb => ImportGltf(rawRelative, outDir, args.Get<GltfImportArgs>()),
+                ERawFileFormat.fbx => ImportFbx(rawRelative, outDir, args.Get<CommonImportArgs>()),
                 ERawFileFormat.masklist => ImportMlmask(rawRelative, outDir),
                 ERawFileFormat.ttf => ImportTtf(rawRelative, outDir, args.Get<CommonImportArgs>()),
                 ERawFileFormat.wav => ImportWav(rawRelative, outDir, args.Get<OpusImportArgs>()),
@@ -69,6 +70,12 @@ namespace WolvenKit.Modkit.RED4
                 ERawFileFormat.re => await ImportAnims(rawRelative, outDir, args.Get<ReImportArgs>()),
                 _ => throw new ArgumentOutOfRangeException(),
             };
+        }
+
+        private bool ImportFbx(RedRelativePath rawRelative, DirectoryInfo outDir, CommonImportArgs commonImportArgs)
+        {
+            _loggerService.Warning($"Use WolvenKit or REDmod to import fbx.");
+            return false;
         }
 
         private Task<bool> ImportAnims(RedRelativePath rawRelative, DirectoryInfo outDir, ReImportArgs importArgs)
@@ -136,7 +143,7 @@ namespace WolvenKit.Modkit.RED4
 
         private bool ImportWav(RedRelativePath rawRelative, DirectoryInfo outDir, OpusImportArgs opusImportArgs)
         {
-            _loggerService.Success($"Use WolvenKit to import opus.");
+            _loggerService.Warning($"Use WolvenKit to import opus.");
             return false;
         }
 
@@ -389,11 +396,25 @@ namespace WolvenKit.Modkit.RED4
 
         private bool ImportGltf(RedRelativePath rawRelative, DirectoryInfo outDir, GltfImportArgs args)
         {
-            string redfile;
-            var ext = args.ImportFormat ==
-                GltfImportAsFormat.MeshWithRig ? $".mesh" : $".{args.ImportFormat.ToString().ToLower()}";
+            var maybeType = TypeFromFileExt(rawRelative.Name);
 
-            // GltfImportAsFormat ToString to match ext
+            var (internalExt, importFormat) =
+                maybeType.HasValue
+                ? (InternalExtForType(maybeType.Value), ImportFormatFor(maybeType.Value))
+                : args.ImportFormat == GltfImportAsFormat.MeshWithRig
+                    ? ($".mesh", args.ImportFormat)
+                    : ($".{args.ImportFormat.ToString().ToLower()}", args.ImportFormat);
+
+            // Drops the .glb/.gltf, and either adds or replaces the already present type ext
+            var possibleRedPath =
+                Path.ChangeExtension(Path.ChangeExtension(Path.Join(outDir.FullName, rawRelative.RelativePath), null), internalExt);
+
+            var maybeMatchingRedFile =
+                File.Exists(possibleRedPath)
+                ? Optional.Some<string>(possibleRedPath)
+                : Optional.None<string>();
+
+            string redfile;
 
             if (args.SelectBase)
             {
@@ -429,7 +450,7 @@ namespace WolvenKit.Modkit.RED4
                     using var fs = new FileStream(path + @"\" + name, FileMode.Create);
                     file.Extract(fs);
 
-                    redfile = FindRedFile(rr, outDir, ext);
+                    redfile = FindRedFile(rr, outDir, internalExt);
 
                 }
                 else
@@ -441,12 +462,13 @@ namespace WolvenKit.Modkit.RED4
             }
             else if (args.Keep)
             {
-                redfile = FindRedFile(rawRelative, outDir, ext);
-                if (string.IsNullOrEmpty(redfile))
+                if (!maybeMatchingRedFile.HasValue)
                 {
-                    _loggerService.Warning($"No existing redfile found to rebuild for {rawRelative.Name}");
+                    _loggerService.Warning($"No existing redfile found to rebuild for {rawRelative.Name} (tried {possibleRedPath})");
                     return false;
                 }
+
+                redfile = maybeMatchingRedFile.Value;
             }
             else
             {
@@ -459,7 +481,7 @@ namespace WolvenKit.Modkit.RED4
             try
             {
                 var result = false;
-                switch (args.ImportFormat)
+                switch (importFormat)
                 {
                     case GltfImportAsFormat.Mesh:
                         result = ImportMesh(rawRelative.ToFileInfo(), redFs, args);
@@ -482,11 +504,11 @@ namespace WolvenKit.Modkit.RED4
 
                 if (result)
                 {
-                    _loggerService.Success($"Rebuilt with buffers: {redfileName} ");
+                    _loggerService.Success($"Rebuilt with buffers: {redfileName} (as {importFormat})");
                 }
                 else
                 {
-                    _loggerService.Error($"Failed to rebuild with buffers: {redfileName}");
+                    _loggerService.Error($"Failed to rebuild with buffers: {redfileName} (as {importFormat})");
                 }
                 return result;
             }
@@ -507,7 +529,7 @@ namespace WolvenKit.Modkit.RED4
         private static ECookedFileFormat FromRawExtension(ERawFileFormat rawextension) =>
             rawextension switch
             {
-                ERawFileFormat.fbx => ECookedFileFormat.mesh,
+                //ERawFileFormat.fbx => ECookedFileFormat.mesh,
                 ERawFileFormat.gltf => ECookedFileFormat.mesh,
                 ERawFileFormat.glb => ECookedFileFormat.mesh,
                 ERawFileFormat.ttf => ECookedFileFormat.fnt,

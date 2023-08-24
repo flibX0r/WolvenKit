@@ -15,6 +15,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WolvenKit.App.Factories;
+using WolvenKit.App.Helpers;
 using WolvenKit.App.Models;
 using WolvenKit.App.Services;
 using WolvenKit.App.ViewModels.Shell;
@@ -39,8 +40,6 @@ public partial class TweakBrowserViewModel : ToolViewModel
     /// Identifies the caption string used for this tool window.
     /// </summary>
     public const string ToolTitle = "Tweak Browser";
-
-    private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
 
     private readonly AppViewModel _appViewModel;
     private readonly IChunkViewmodelFactory _chunkViewmodelFactory;
@@ -105,15 +104,12 @@ public partial class TweakBrowserViewModel : ToolViewModel
 
             case nameof(SelectedRecordEntry):
             {
+                SelectedRecord.Clear();
                 if (SelectedRecordEntry != null && _tweakDB.IsLoaded)
                 {
-                    SelectedRecord.Clear();
                     var vm = _chunkViewmodelFactory.ChunkViewModel(TweakDBService.GetRecord(SelectedRecordEntry.Item).NotNull(), SelectedRecordEntry.DisplayName, _appViewModel, null, true);
                     vm.IsExpanded = true;
-                }
-                else
-                {
-                    SelectedRecord.Clear();
+                    SelectedRecord.Add(vm);
                 }
                 OnPropertyChanged(nameof(SelectedRecord));
                 break;
@@ -232,7 +228,7 @@ public partial class TweakBrowserViewModel : ToolViewModel
         }
         classes.Sort();
 
-        _dispatcher.Invoke(() =>
+        DispatcherHelper.RunOnMainThread(() =>
         {
             RecordTypes = classes;
 

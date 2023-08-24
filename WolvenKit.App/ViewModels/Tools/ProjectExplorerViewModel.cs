@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
+using System.Xml.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DynamicData;
@@ -61,8 +62,6 @@ public partial class ProjectExplorerViewModel : ToolViewModel
 
     #endregion fields
 
-    #region constructors
-
     public ProjectExplorerViewModel(
         AppViewModel appViewModel,
         IProjectManager projectManager,
@@ -95,15 +94,14 @@ public partial class ProjectExplorerViewModel : ToolViewModel
             .BindToObservableList(out _observableList)
             .Subscribe(OnNext);
 
-        _projectManager.ActiveProjectChanged += _projectManager_ActiveProjectChanged;
-
+        _projectManager.ActiveProjectChanged += ProjectManager_ActiveProjectChanged;
     }
 
-    private void _projectManager_ActiveProjectChanged(object? sender, ActiveProjectChangedEventArgs e)
+    private void ProjectManager_ActiveProjectChanged(object? sender, ActiveProjectChangedEventArgs e)
     {
         if (e.Project is not null)
         {
-            Application.Current.Dispatcher.Invoke( () => 
+            DispatcherHelper.RunOnMainThread( () => 
             {
                 ActiveProject = e.Project;
             }, DispatcherPriority.ContextIdle);
@@ -115,21 +113,60 @@ public partial class ProjectExplorerViewModel : ToolViewModel
         if (value is not null)
         {
             _mainViewModel.SelectFileCommand.SafeExecute(value);
+                
+            // toggle context menu buttons
+            if (SelectedItems is not null && SelectedItems.Any())
+            {
+                var selected = SelectedItems.OfType<FileModel>().ToList();
+                // if all are in raw folder, then enable convertFrom
+                if (selected.All(x => IsInRawFolder(x)))
+                {
+                    ConvertToIsEnabled = false;
+                    ConvertFromIsEnabled = true;
+                }
+                // if all are in archive folder, then enable convertTo
+                else if (selected.All(x => IsInArchiveFolder(x)))
+                {
+                    ConvertToIsEnabled = true;
+                    ConvertFromIsEnabled = false;
+                }
+                // else disable both
+                else
+                {
+                    ConvertToIsEnabled = false;
+                    ConvertFromIsEnabled = false;
+                }
+            }
+            else if (value is not null)
+            {
+                if (IsInRawFolder(value))
+                {
+                    ConvertToIsEnabled = false;
+                    ConvertFromIsEnabled = true;
+                }
+                // if all are in archive folder, then enable convertTo
+                else if (IsInArchiveFolder(value))
+                {
+                    ConvertToIsEnabled = true;
+                    ConvertFromIsEnabled = false;
+                }
+                // else disable both
+                else
+                {
+                    ConvertToIsEnabled = false;
+                    ConvertFromIsEnabled = false;
+                }
+            }
         }
     }
 
     private void OnNext(IChangeSet<FileModel, ulong> obj)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        DispatcherHelper.RunOnMainThread(() =>
         {
-            BeforeDataSourceUpdate?.Invoke(this, EventArgs.Empty);
             BindGrid1 = new ObservableCollection<FileModel>(_observableList.Items);
-            AfterDataSourceUpdate?.Invoke(this, EventArgs.Empty);
         }, DispatcherPriority.ContextIdle);
     }
-
-
-    #endregion constructors
 
     #region properties
 
@@ -170,19 +207,22 @@ public partial class ProjectExplorerViewModel : ToolViewModel
     [NotifyCanExecuteChangedFor(nameof(RenameFileCommand))]
     [NotifyCanExecuteChangedFor(nameof(Bk2ImportCommand))]
     [NotifyCanExecuteChangedFor(nameof(Bk2ExportCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ConvertToCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ConvertFromCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenInAssetBrowserCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenInMlsbCommand))]
     private FileModel? _selectedItem;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(DeleteFileCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConvertToCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConvertFromCommand))]
     private ObservableCollection<object>? _selectedItems = new();
 
     [ObservableProperty] private bool _isFlatModeEnabled;
 
     [ObservableProperty] private int _selectedTabIndex;
+
+    [ObservableProperty] private bool _convertToIsEnabled;
+    [ObservableProperty] private bool _convertFromIsEnabled;
 
     public FileModel? LastSelected => _watcherService.LastSelect;
 
@@ -209,7 +249,7 @@ public partial class ProjectExplorerViewModel : ToolViewModel
     /// </summary>
     private bool CanRefresh() => ActiveProject != null;
     [RelayCommand(CanExecute = nameof(CanRefresh))]
-    private Task Refresh() => _watcherService.RefreshAsync(ActiveProject.NotNull());
+    private void Refresh() => _watcherService.QueueRefresh();
 
     /// <summary>
     /// Opens the currently selected folder in the tab
@@ -254,6 +294,58 @@ public partial class ProjectExplorerViewModel : ToolViewModel
     /// <summary>
     /// Reimports the game file to replace the current one
     /// </summary>
+    private bool CanAddDependencies() => ActiveProject != null && SelectedItem != null && IsInRawFolder(SelectedItem) && SelectedItem.Extension.ToLower().Contains("xml");
+    [RelayCommand(CanExecute = nameof(CanAddDependencies))]
+    private async Task AddDependencies()
+    {
+        if (!SelectedItem.NotNull().IsDirectory)
+        {
+            // parse xml
+            var filename = SelectedItem.FullName;
+            var serializer = new XmlSerializer(typeof(MaterialXmlModel));
+
+            using Stream reader = new FileStream(filename, FileMode.Open);
+            // Call the Deserialize method to restore the object's state.
+            if (serializer.Deserialize(reader) is MaterialXmlModel model)
+            {
+                var materials = new List<string>();
+                if (model.Materials is not null)
+                {
+                    foreach (var material in model.Materials)
+                    {
+                        if (material.Param is not null)
+                        {
+                            foreach (var param in material.Param)
+                            {
+                                if (!string.IsNullOrEmpty(param.Value) && !string.IsNullOrEmpty(param.Type) && param.Type.StartsWith("rRef:"))
+                                {
+                                    var path = param.Value;
+                                    if (!materials.Contains(path))
+                                    {
+                                        materials.Add(path);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // add from AB
+                foreach (var material in materials)
+                {
+                    var relPath = FileModel.GetRelativeName(material, ActiveProject.NotNull());
+                    var hash = FNV1A64HashAlgorithm.HashString(relPath);
+                    await Task.Run(() => _gameController.GetController().AddToMod(hash));
+                }
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Reimports the game file to replace the current one
+    /// </summary>
     private bool CanReimportFile() => ActiveProject != null && SelectedItem != null && !IsInRawFolder(SelectedItem);
     [RelayCommand(CanExecute = nameof(CanReimportFile))]
     private async Task ReimportFile()
@@ -277,7 +369,6 @@ public partial class ProjectExplorerViewModel : ToolViewModel
             }
 
             _watcherService.IsSuspended = false;
-            await _watcherService.RefreshAsync(ActiveProject.NotNull());
 
             _progressService.Completed();
         }
@@ -460,6 +551,7 @@ public partial class ProjectExplorerViewModel : ToolViewModel
 
     #region red4
 
+    private bool IsInArchiveFolder(FileModel model) => ActiveProject is not null && model.FullName.Contains(ActiveProject.ModDirectory);
     private bool IsInRawFolder(FileModel model) => ActiveProject is not null && model.FullName.Contains(ActiveProject.RawDirectory);
 
     private bool CanBk2Import() => SelectedItem != null && IsInRawFolder(SelectedItem) && SelectedItem.Extension.ToLower().Contains("avi") && ActiveProject is not null;
@@ -505,41 +597,45 @@ public partial class ProjectExplorerViewModel : ToolViewModel
         process?.WaitForInputIdle();
     }
 
-    private bool CanConvertTo() => SelectedItem != null && !IsInRawFolder(SelectedItem) && ActiveProject is not null;
+    private bool CanConvertTo() => SelectedItems != null && ActiveProject is not null;
     [RelayCommand(CanExecute = nameof(CanConvertTo))]
     private async Task ConvertToAsync()
     {
-        if (SelectedItem.NotNull().IsDirectory)
+        _watcherService.IsSuspended = true;
+        
+        var progress = 0;
+        _progressService.Report(0);
+
+        List<string> files = new();
+
+        // get all files
+        foreach (var item in SelectedItems.NotNull().OfType<FileModel>().Where(x => !IsInRawFolder(x)))
         {
-            _watcherService.IsSuspended = true;
-
-            var progress = 0;
-            _progressService.Report(0);
-
-            var files = Directory.GetFiles(SelectedItem.FullName, "*", SearchOption.AllDirectories).ToList();
-            foreach (var file in files)
+            if (item.IsDirectory)
             {
-                await ConvertToTask(file);
-
-                progress++;
-                _progressService.Report(progress / (float)files.Count);
+                files.AddRange(Directory.GetFiles(item.FullName, "*", SearchOption.AllDirectories));
             }
-
-            _watcherService.IsSuspended = false;
-            await _watcherService.RefreshAsync(ActiveProject.NotNull());
-
-            _progressService.Completed();
+            else
+            {
+                files.Add(item.FullName);
+            }
         }
-        else
+
+        // convert files
+        foreach (var file in files)
         {
-            _progressService.IsIndeterminate = true;
-            var inpath = SelectedItem.FullName;
-            await ConvertToTask(inpath);
-            _progressService.IsIndeterminate = false;
+            await ConvertToJsonAsync(file);
+
+            progress++;
+            _progressService.Report(progress / (float)files.Count);
         }
+
+        _watcherService.IsSuspended = false;
+
+        _progressService.Completed();
     }
 
-    private async Task ConvertToTask(string file)
+    private async Task ConvertToJsonAsync(string file)
     {
         if (!File.Exists(file))
         {
@@ -557,46 +653,50 @@ public partial class ProjectExplorerViewModel : ToolViewModel
         {
             Directory.CreateDirectory(outDirectoryPath);
 
-            await Task.Run(() => _modTools.ConvertToAndWrite(ETextConvertFormat.json, file, new DirectoryInfo(outDirectoryPath)));
+            await _modTools.ConvertToJsonAndWriteAsync(file, new DirectoryInfo(outDirectoryPath));
         }
     }
 
 
-    private bool CanConvertFromJson() => SelectedItem != null && IsInRawFolder(SelectedItem) && ActiveProject is not null;
+    private bool CanConvertFromJson() => SelectedItems != null && ActiveProject is not null;
     [RelayCommand(CanExecute = nameof(CanConvertFromJson))]
     private async Task ConvertFromAsync()
     {
-        if (SelectedItem.NotNull().IsDirectory)
+        _watcherService.IsSuspended = true;
+
+        var progress = 0;
+        _progressService.Report(0);
+
+        List<string> files = new();
+
+        // get all files
+        foreach (var item in SelectedItems.NotNull().OfType<FileModel>().Where(x => IsInRawFolder(x)))
         {
-            _watcherService.IsSuspended = true;
-
-            var progress = 0;
-            _progressService.Report(0);
-
-            var files = Directory.GetFiles(SelectedItem.FullName, "*.json", SearchOption.AllDirectories).Where(name => !name.EndsWith(".Material.json")).ToList();
-            foreach (var file in files)
+            if (item.IsDirectory)
             {
-                await ConvertFromTask(file);
-
-                progress++;
-                _progressService.Report(progress / (float)files.Count);
+                files.AddRange(Directory.GetFiles(item.FullName, "*.json", SearchOption.AllDirectories).Where(name => !name.EndsWith(".Material.json")));
             }
-
-            _watcherService.IsSuspended = false;
-            await _watcherService.RefreshAsync(ActiveProject.NotNull());
-
-            _progressService.Completed();
+            else
+            {
+                files.Add(item.FullName);
+            }
         }
-        else
+
+        // convert files
+        foreach (var file in files)
         {
-            _progressService.IsIndeterminate = true;
-            var inpath = SelectedItem.FullName;
-            await ConvertFromTask(inpath);
-            _progressService.IsIndeterminate = false;
+            await ConvertFromJsonAsync(file);
+
+            progress++;
+            _progressService.Report(progress / (float)files.Count);
         }
+
+        _watcherService.IsSuspended = false;
+
+        _progressService.Completed();
     }
 
-    private async Task ConvertFromTask(string file)
+    private async Task ConvertFromJsonAsync(string file)
     {
         if (!File.Exists(file))
         {
@@ -614,7 +714,7 @@ public partial class ProjectExplorerViewModel : ToolViewModel
         {
             Directory.CreateDirectory(outDirectoryPath);
 
-            await Task.Run(() => _modTools.ConvertFromAndWrite(new FileInfo(file), new DirectoryInfo(outDirectoryPath)));
+            await _modTools.ConvertFromJsonAndWriteAsync(new FileInfo(file), new DirectoryInfo(outDirectoryPath));
         }
 
     }
@@ -688,11 +788,6 @@ public partial class ProjectExplorerViewModel : ToolViewModel
     #region Methods
 
     public AppViewModel GetAppViewModel() => _mainViewModel;
-
-    public event EventHandler? BeforeDataSourceUpdate;
-    public event EventHandler? AfterDataSourceUpdate;
-
-    
 
     /// <summary>
     /// Initialize Avalondock specific defaults that are specific to this tool window.

@@ -20,9 +20,17 @@ namespace WolvenKit.RED4.Types
 			set => SetPropertyValue<CBool>(value);
 		}
 
+		[Ordinal(2)] 
+		[RED("cursorForDevice")] 
+		public CName CursorForDevice
+		{
+			get => GetPropertyValue<CName>();
+			set => SetPropertyValue<CName>(value);
+		}
+
 		public inkCursorInfo()
 		{
-			Pos = new();
+			Pos = new Vector2();
 
 			PostConstruct();
 		}

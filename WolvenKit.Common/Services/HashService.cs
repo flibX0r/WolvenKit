@@ -42,8 +42,6 @@ namespace WolvenKit.Common.Services
 
             ImportHandler.AddPathHandler = AddProjectPath;
             ResourcePathPool.ResolveHashHandler = Get;
-
-            NodeRefPool.ResolveHashHandler = GetNodeRef;
         }
 
         #endregion Constructors
@@ -61,13 +59,13 @@ namespace WolvenKit.Common.Services
 
         public IEnumerable<ulong> GetMissingHashes() => _missing.Keys;
 
-        public bool Contains(ulong key)
+        public bool Contains(ulong key, bool checkUserHashes = true)
         {
             if (_hashes.ContainsKey(key))
             {
                 return true;
             }
-            if (_userHashes.ContainsKey(key))
+            if (checkUserHashes && _userHashes.ContainsKey(key))
             {
                 return true;
             }
@@ -121,16 +119,6 @@ namespace WolvenKit.Common.Services
             }
 
             return null;
-        }
-
-        public string? GetNodeRef(ulong key)
-        {
-            if (_noderefs.TryGetValue(key, out var value))
-            {
-                return value.ToString();
-            }
-
-            return Get(key);
         }
 
         public void AddCustom(ulong hash, string path)
@@ -195,8 +183,8 @@ namespace WolvenKit.Common.Services
 
         private void Load()
         {
-            LoadEmbeddedHashes(s_used, _hashes);
-            LoadEmbeddedHashes(s_noderefs, _noderefs);
+            ReadHashes(DecompressEmbeddedFile(s_used), _hashes);
+            ReadNodeRefs(DecompressEmbeddedFile(s_noderefs));
 
             LoadAdditional();
 
@@ -228,7 +216,7 @@ namespace WolvenKit.Common.Services
             File.WriteAllLines(userHashesPath, _userHashes.Select(x => x.Value.ToString()).ToArray());
         }
 
-        private void LoadEmbeddedHashes(string resourceName, Dictionary<ulong, SAsciiString> hashDictionary)
+        private MemoryStream DecompressEmbeddedFile(string resourceName)
         {
             using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName).NotNull();
 
@@ -248,11 +236,7 @@ namespace WolvenKit.Common.Services
 
             Oodle.Decompress(inbuffer, outputbuffer);
 
-            hashDictionary.EnsureCapacity(1_100_000);
-
-            using var ms = new MemoryStream(outputbuffer);
-            ReadHashes(ms, hashDictionary);
-
+            return new MemoryStream(outputbuffer);
         }
 
         private void LoadMissingHashes()
@@ -285,6 +269,15 @@ namespace WolvenKit.Common.Services
                 {
                     hashDict.Add(hash, new SAsciiString(line));
                 }
+            }
+        }
+
+        private void ReadNodeRefs(Stream memoryStream)
+        {
+            using var sr = new StreamReader(memoryStream);
+            while (sr.ReadLine() is { } line)
+            {
+                NodeRefPool.AddOrGetHash(line);
             }
         }
 

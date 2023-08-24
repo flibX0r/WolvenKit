@@ -1,6 +1,7 @@
 using System.Reactive.Disposables;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using ReactiveUI;
 using Syncfusion.UI.Xaml.TreeGrid;
 using WolvenKit.App.ViewModels.Documents;
@@ -34,12 +35,30 @@ namespace WolvenKit.Views.Documents
                     hxViewport.MouseDown3D += vm.MouseDown3D;
                 }
 
+                if (!ReferenceEquals(hxContentVisual.DataContext, DataContext))
+                {
+                    ViewModel.SelectedAppearance?.ModelGroup.RemoveSelf();
+                }
+
                 this.OneWayBind(ViewModel,
                         viewModel => viewModel.SelectedAppearance.ModelGroup,
                         view => view.hxContentVisual.ItemsSource)
                     .DisposeWith(disposables);
-            
             });
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+
+            ViewModel.CtrlKeyPressed = true;
+        }
+
+        protected override void OnKeyUp(KeyEventArgs e)
+        {
+            base.OnKeyUp(e);
+
+            ViewModel.CtrlKeyPressed = false;
         }
 
         private void HxViewport_MouseDown3D(object sender, RoutedEventArgs e) => throw new System.NotImplementedException();
@@ -56,6 +75,24 @@ namespace WolvenKit.Views.Documents
             //if (ViewModel != null)
             //    ShowAppearance(ViewModel.SelectedAppearance, true);
             ////LoadModels(ViewModel.SelectedAppearance);
+        }
+
+        private void CollapseAllChildrenRecursiveMenuItem_OnClick(object sender, RoutedEventArgs e) => 
+            _currentNode?.TreeGrid.CollapseAllNodes(_currentNode.TreeNode);
+
+        private void ExpandAllChildrenRecursiveMenuItem_OnClick(object sender, RoutedEventArgs e) =>
+            _currentNode?.TreeGrid.ExpandAllNodes(_currentNode.TreeNode);
+
+        private void CollapseStateAllChildren(TreeNodes nodes, bool state, bool recursive)
+        {
+            foreach (var node in nodes)
+            {
+                node.IsExpanded = state;
+                if (recursive && node.HasChildNodes)
+                {
+                    CollapseStateAllChildren(node.ChildNodes, state, true);
+                }
+            }
         }
 
         private void CheckAllChildrenMenuItem_OnClick(object sender, RoutedEventArgs e)

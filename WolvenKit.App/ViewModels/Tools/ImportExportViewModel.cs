@@ -16,12 +16,14 @@ namespace WolvenKit.App.ViewModels.Tools;
 
 public abstract partial class ImportExportViewModel : FloatingPaneViewModel
 {
-    private readonly IArchiveManager _archiveManager;
-    private readonly INotificationService _notificationService;
-    private readonly ISettingsManager _settingsManager;
+    protected readonly IArchiveManager _archiveManager;
+    protected readonly INotificationService _notificationService;
+    protected readonly ISettingsManager _settingsManager;
 
     protected (JsonObject, Type) _currentSettings;
     protected readonly JsonSerializerOptions _jsonSerializerSettings;
+
+    protected Task? _refreshtask;
 
     protected ImportExportViewModel(IArchiveManager archiveManager, INotificationService notificationService, ISettingsManager settingsManager, string header, string contentId) : base(header, contentId)
     {
@@ -96,7 +98,14 @@ public abstract partial class ImportExportViewModel : FloatingPaneViewModel
     }
 
     [RelayCommand]
-    private void Refresh() => LoadFiles();
+    private async Task Refresh()
+    {
+        if (_refreshtask is null || (_refreshtask is not null && _refreshtask.IsCompleted))
+        {
+            _refreshtask = LoadFilesAsync();
+            await _refreshtask;
+        }
+    }
 
     [RelayCommand]
     private void ToggleAdvancedOptions() => _settingsManager.ShowAdvancedOptions = !_settingsManager.ShowAdvancedOptions;
@@ -126,7 +135,7 @@ public abstract partial class ImportExportViewModel : FloatingPaneViewModel
 
     protected abstract Task ExecuteProcessBulk(bool all = false);
 
-    protected abstract void LoadFiles();
+    protected abstract Task LoadFilesAsync();
 
     #endregion
 }

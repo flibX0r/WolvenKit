@@ -168,6 +168,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         if (_data is worldStreamingSector)
         {
             PanelVisibility.ShowSelectionPanel = true;
+            PanelVisibility.ShowToggleCollision = true;
             var app = new Appearance(Path.GetFileNameWithoutExtension(Parent.ContentId).Replace("-", "_"));
 
             Appearances.Add(app);
@@ -179,6 +180,8 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         if (_data is worldStreamingBlock)
         {
             PanelVisibility.ShowSearchPanel = true;
+            PanelVisibility.ShowToggleCollision = true;
+            PanelVisibility.ShowAddSectors = true;
 
             RenderBlockSolo();
         }
@@ -237,6 +240,8 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
     [ObservableProperty] private Appearance? _selectedAppearance;
 
+    public bool CtrlKeyPressed { get; set; }
+
     #endregion
 
     #region commands
@@ -284,6 +289,50 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         }
     }
 
+    private bool _isCollisionRendered = true;
+
+    [RelayCommand]
+    public void ToggleCollision()
+    {
+        if (SelectedAppearance is null)
+        {
+            return;
+        }
+
+        _isCollisionRendered = !_isCollisionRendered;
+
+        foreach (var element in SelectedAppearance.ModelGroup)
+        {
+            SetRenderingState(element);
+        }
+    }
+
+    private void SetRenderingState(Element3D element)
+    {
+        if (element is GroupModel3DExt groupModel)
+        {
+            if (groupModel.Text != null && groupModel.Text.StartsWith("collisionNode_"))
+            {
+                groupModel.IsRendering = _isCollisionRendered;
+                return;
+            }
+
+            foreach (var child in groupModel.Children)
+            {
+                SetRenderingState(child);
+            }
+        }
+
+        if (element is SubmeshComponent submesh)
+        {
+            if (submesh.Text != null && submesh.Text.StartsWith("collisionNode_"))
+            {
+                submesh.IsRendering = _isCollisionRendered;
+                return;
+            }
+        }
+    }
+
     #endregion
 
     #region methods
@@ -306,12 +355,10 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         
         foreach (var me in data.MaterialEntries)
         {
-            ArgumentNullException.ThrowIfNull(me);
-
             var name = GetUniqueMaterialName(me.Name.ToString().NotNull(), data);
             if (!me.IsLocalInstance)
             {
-                materials.Add(name, new Material(name));
+                materials.TryAdd(name, new Material(name));
                 continue;
             }
             CMaterialInstance? inst = null;
@@ -347,7 +394,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
             foreach (var pair in inst.Values)
             {
-                ArgumentNullException.ThrowIfNull(pair);
                 var k = pair.Key.ToString().NotNull();
                 material.Values[k] = pair.Value;
             }
@@ -358,8 +404,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         var appIndex = 0;
         foreach (var handle in data.Appearances)
         {
-            ArgumentNullException.ThrowIfNull(handle);
-
             var app = handle.GetValue();
             if (app is meshMeshAppearance mmapp)
             {
@@ -417,9 +461,10 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
     public GroupModel3D GroupFromRigBone(Rig rig, RigBone bone, Dictionary<string, GroupModel3D> groups)
     {
-        var group = new GroupModel3D()
+        var group = new GroupModel3DExt()
         {
             Name = bone.Name,
+            Text = bone.Name,
             Transform = new MatrixTransform3D(bone.Matrix.ToMatrix3D())
         };
         foreach (var child in bone.Children)
@@ -430,13 +475,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         return group;
     }
 
-    public class MeshComponent : GroupModel3D
-    {
-        public string? AppearanceName { get; set; }
-        public string? MaterialName { get; set; }
-        public string? WorldNodeIndex { get; set; }
-        public ResourcePath DepotPath { get; set; }
-    }
 
     public GroupModel3D GroupFromModel(LoadableModel model)
     {
@@ -444,6 +482,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         try
         {
             group.Name = !string.IsNullOrEmpty(model.Name) && char.IsDigit(model.Name[0]) ? $"_{model.Name}" : $"{model.Name}";
+            group.Text = model.Name;
             group.AppearanceName = model.AppearanceName;
             group.Transform = model.Transform;
             group.IsRendering = model.IsEnabled;
@@ -472,9 +511,10 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         var modelGroups = new List<Element3D>();
         foreach (var (name, rig) in Rigs)
         {
-            var group = new GroupModel3D()
+            var group = new GroupModel3DExt()
             {
                 Name = $"{rig.Name}",
+                Text = $"{rig.Name}",
                 Transform = new MatrixTransform3D(rig.Matrix.ToMatrix3D())
             };
             group.Children.Add(GroupFromRigBone(rig, rig.Bones[0], groups));
@@ -584,8 +624,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
                 foreach (var me in mesh.MaterialEntries)
                 {
-                    ArgumentNullException.ThrowIfNull(me);
-
                     var name = GetUniqueMaterialName(me.Name.ToString().NotNull(), mesh);
                     if (!me.IsLocalInstance)
                     {
@@ -623,7 +661,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
                     foreach (var pair in inst.Values)
                     {
-                        ArgumentNullException.ThrowIfNull(pair);
                         var k = pair.Key.ToString().NotNull();
                         material.Values[k] = pair.Value;
                     }
@@ -633,8 +670,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                 var apps = new List<string>();
                 foreach (var handle in mesh.Appearances)
                 {
-                    ArgumentNullException.ThrowIfNull(handle);
-
                     var app = handle.GetValue();
                     if (app is meshMeshAppearance mmapp)
                     {
@@ -653,8 +688,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
                 foreach (var handle in mesh.Appearances)
                 {
-                    ArgumentNullException.ThrowIfNull(handle);
-
                     var app = handle.GetValue();
                     if (app is meshMeshAppearance mmapp && (mmapp.Name == meshApp || meshApp == "default" && mesh.Appearances.IndexOf(handle) == 0))
                     {
@@ -914,7 +947,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
     {
         if (mouseButtonEventArgs.LeftButton == MouseButtonState.Pressed && modelHit is SubmeshComponent { Parent: MeshComponent { Parent: MeshComponent mesh } })
         {
-            Parent.GetLoggerService().Info((mesh.WorldNodeIndex != null ? "worldNodeData[" + mesh.WorldNodeIndex + "] : " : "Mesh Name :") + mesh.Name);
+            Parent.GetLoggerService().Info((mesh.WorldNodeIndex != null ? "worldNodeData[" + mesh.WorldNodeIndex + "] : " : "Mesh Name :") + mesh.Text);
         }
 
     }
@@ -1000,8 +1033,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                     float xMax = 0, xMin = 0, yMin = 0, yMax = 0;
                     foreach (var chunk in mmpt.ChunkBoundingBoxes)
                     {
-                        ArgumentNullException.ThrowIfNull(chunk);
-
                         xMax = Math.Max(xMax, chunk.Max.X);
                         yMax = Math.Max(yMax, chunk.Max.Y);
                         xMin = Math.Min(xMin, chunk.Min.X);
@@ -1069,6 +1100,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
             var sm = new SubmeshComponent()
             {
                 Name = $"submesh_{index:D2}_LOD_{meshesinfo.LODLvl[index]:D2}",
+                Text = $"submesh_{index:D2}_LOD_{meshesinfo.LODLvl[index]:D2}",
                 LOD = meshesinfo.LODLvl[index],
                 IsRendering = (chunkMask & 1UL << index) > 0 && meshesinfo.LODLvl[index] == (SelectedAppearance?.SelectedLOD ?? 1),
                 EnabledWithMask = (chunkMask & 1UL << index) > 0,
@@ -1257,8 +1289,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
         foreach (var me in mesh.MaterialEntries)
         {
-            ArgumentNullException.ThrowIfNull(me);
-
             var name = GetUniqueMaterialName(me.Name.ToString().NotNull(), mesh);
             if (!me.IsLocalInstance)
             {
@@ -1271,7 +1301,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
             
             var inst = localList != null && localList.Files.Count > me.Index
                 ? (CMaterialInstance)localList.Files[me.Index].RootChunk
-                : (CMaterialInstance)mesh.PreloadLocalMaterialInstances[me.Index].NotNull().GetValue();
+                : (CMaterialInstance)mesh.PreloadLocalMaterialInstances[me.Index].NotNull().GetValue().NotNull();
 
             if (inst == null)
             {
@@ -1287,7 +1317,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
             foreach (var pair in inst.Values)
             {
-                ArgumentNullException.ThrowIfNull(pair);
                 var k = pair.Key.ToString().NotNull();
 
                 if (!material.Values.ContainsKey(k))
@@ -1317,6 +1346,14 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
             return;
         }
         IsLoadingMaterials = true;
+        if (CtrlKeyPressed)
+        {
+            foreach (var (_, material) in SelectedAppearance.RawMaterials)
+            {
+                ClearMaterial(material);
+            }
+        }
+
         Parallel.ForEachAsync(from entry in SelectedAppearance.RawMaterials orderby entry.Key ascending select entry, (material, cancellationToken) => LoadMaterial(material.Value)).ContinueWith((result) =>
         {
             Parent.GetLoggerService().NotNull().Info($"All materials loaded!");
@@ -1336,6 +1373,44 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         //{
         //    IsLoadingMaterials = false;
         //});
+    }
+
+    private void ClearMaterial(Material? material)
+    {
+        if (material == null)
+        {
+            return;
+        }
+
+        var filename_b = Path.Combine(ISettingsManager.GetTemp_OBJPath(), material.Name + ".png");
+        if (File.Exists(filename_b))
+        {
+            File.Delete(filename_b);
+        }
+
+        var filename_bn = Path.Combine(ISettingsManager.GetTemp_OBJPath(), material.Name + "_n.png");
+        if (File.Exists(filename_bn))
+        {
+            File.Delete(filename_bn);
+        }
+
+        var filename_rm = Path.Combine(ISettingsManager.GetTemp_OBJPath(), material.Name + "_rm.png");
+        if (File.Exists(filename_rm))
+        {
+            File.Delete(filename_rm);
+        }
+
+        var filename_d = Path.Combine(ISettingsManager.GetTemp_OBJPath(), material.Name + "_d.dds");
+        if (File.Exists(filename_d))
+        {
+            File.Delete(filename_d);
+        }
+
+        var filename_n = Path.Combine(ISettingsManager.GetTemp_OBJPath(), material.Name + "_n.dds");
+        if (File.Exists(filename_n))
+        {
+            File.Delete(filename_n);
+        }
     }
 
     public async ValueTask LoadMaterial(WolvenKit.App.Models.Material? material)
@@ -1375,7 +1450,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
             {
                 foreach (var pair in cmi.Values)
                 {
-                    ArgumentNullException.ThrowIfNull(pair);
                     var k = pair.Key.ToString().NotNull();
 
                     if (!dictionary.ContainsKey(k))
@@ -1447,13 +1521,13 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                 return;
             }
 
-            var destBitmap = new Bitmap((int)firstStream.Width, (int)firstStream.Height);
-            var rmBitmap = new Bitmap((int)firstStream.Width, (int)firstStream.Height);
-            var normalBitmap = new Bitmap((int)firstStream.Width, (int)firstStream.Height);
+            var destBitmap = new Bitmap((int)firstStream.PixelWidth, (int)firstStream.PixelHeight);
+            var rmBitmap = new Bitmap((int)firstStream.PixelWidth, (int)firstStream.PixelHeight);
+            var normalBitmap = new Bitmap((int)firstStream.PixelWidth, (int)firstStream.PixelHeight);
             using (var gfx_n = Graphics.FromImage(normalBitmap))
             using (var brush = new SolidBrush(System.Drawing.Color.FromArgb(128, 128, 255)))
             {
-                gfx_n.FillRectangle(brush, 0, 0, (int)firstStream.Width, (int)firstStream.Height);
+                gfx_n.FillRectangle(brush, 0, 0, (int)firstStream.PixelWidth, (int)firstStream.PixelHeight);
             }
 
             var gfx = Graphics.FromImage(destBitmap);
@@ -1463,7 +1537,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
             var i = 0;
             foreach (var layer in mls.Layers)
             {
-                ArgumentNullException.ThrowIfNull(layer);
                 if (i >= streams.Count)
                 {
                     break;
@@ -1614,8 +1687,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
                     foreach (var strength in mllt.Overrides.NormalStrength)
                     {
-                        ArgumentNullException.ThrowIfNull(strength);
-
                         if (strength.N == layer.NormalStrength)
                         {
                             for (var y = 0; y < maskBitmap.Height; y++)
@@ -1996,7 +2067,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         }
     }
 
-    public Element3D RenderSector(worldStreamingSector data, Appearance app)
+    public SectorGroup RenderSector(worldStreamingSector data, Appearance app)
     {
         if ( data.NodeData.Data is not worldNodeDataBuffer buffer)
         {
@@ -2026,6 +2097,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                 var group = new MeshComponent()
                 {
                     Name = name,
+                    Text = name,
                     WorldNodeIndex = $"{handleIndex}",
                     AppearanceName = irmn.MeshAppearance,
                     DepotPath = irmn.Mesh.DepotPath
@@ -2060,6 +2132,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                         var subgroup = new MeshComponent()
                         {
                             Name = name + $"_instance_{i:D2}",
+                            Text = name + $"_instance_{i:D2}",
                             AppearanceName = wimn.MeshAppearance,
                             DepotPath = irmn.Mesh.DepotPath
                         };
@@ -2113,6 +2186,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                         var subgroup = new MeshComponent()
                         {
                             Name = name + $"_instance_{i:D2}",
+                            Text = name + $"_instance_{i:D2}",
                             AppearanceName = widmn.MeshAppearance,
                             DepotPath = irmn.Mesh.DepotPath
                         };
@@ -2155,6 +2229,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                         var subgroup = new MeshComponent()
                         {
                             Name = name + $"_instance_{i:D2}",
+                            Text = name + $"_instance_{i:D2}",
                             AppearanceName = irmn.MeshAppearance,
                             DepotPath = irmn.Mesh.DepotPath
                         };
@@ -2198,7 +2273,8 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                 var mesh = new MeshComponent()
                 {
                     WorldNodeIndex = $"{handleIndex}",
-                    Name = "collisionNode_" + wcn.SectorHash
+                    Name = "collisionNode_" + wcn.SectorHash,
+                    Text = "collisionNode_" + wcn.SectorHash
                 };
 
                 var colliderMaterial = new PBRMaterial()
@@ -2214,17 +2290,15 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
                 foreach (var actor in cb.Actors)
                 {
-                    ArgumentNullException.ThrowIfNull(actor);
                     var actorGroup = new MeshComponent()
                     {
                         WorldNodeIndex = $"{handleIndex}",
-                        Name = "actor_" + cb.Actors.IndexOf(actor)
+                        Name = "actor_" + cb.Actors.IndexOf(actor),
+                        Text = "actor_" + cb.Actors.IndexOf(actor)
                     };
 
                     foreach (var shape in actor.Shapes)
                     {
-                        ArgumentNullException.ThrowIfNull(shape);
-
                         HelixToolkit.SharpDX.Core.MeshGeometry3D? geometry = null;
 
                         if (shape is CollisionShapeSimple simpleShape && simpleShape.ShapeType == Enums.physicsShapeType.Box)
@@ -2362,8 +2436,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
                                 foreach (var face in mce.Faces)
                                 {
-                                    ArgumentNullException.ThrowIfNull(face);
-
                                     var points = new List<SharpDX.Vector3>();
                                     foreach (var point in face)
                                     {
@@ -2392,6 +2464,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                         var shapeGroup = new SubmeshComponent()
                         {
                             Name = "shape_" + hash,
+                            Text = "shape_" + hash,
                             IsRendering = true,
                             Geometry = geometry,
                             Material = colliderMaterial,
@@ -2437,8 +2510,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
                 foreach (var tile in wntr.TilesData)
                 {
-                    ArgumentNullException.ThrowIfNull(tile);
-
                     if (tile.TilesBuffer.Data is not TilesBuffer tb)
                     {
                         continue;
@@ -2448,7 +2519,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
                     foreach (var v in tb.Vertices)
                     {
-                        ArgumentNullException.ThrowIfNull(v);
                         positions.Add(new SharpDX.Vector3(v.X, v.Y, -v.Z));
                     }
 
@@ -2456,8 +2526,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
                     foreach (var f in tb.FaceInfo)
                     {
-                        ArgumentNullException.ThrowIfNull(f);
-
                         if (f.NumIndices == 3)
                         {
                             mb.AddTriangle(positions[f.Indices[0]], positions[f.Indices[2]], positions[f.Indices[1]]);
@@ -2484,7 +2552,8 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
                     var group = new MeshComponent()
                     {
-                        Name = name
+                        Name = name,
+                        Text = name
                     };
 
                     group.Children.Add(mesh);
@@ -2508,6 +2577,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                         if (entity != null)
                         {
                             entity.Name = "Entity";
+                            entity.Text = "Entity";
                             //var f = Shell.ChunkViewModel.FixRotation;
 
                             var q = new System.Numerics.Quaternion()
@@ -2570,8 +2640,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
                 foreach (var point in shape.Points)
                 {
-                    ArgumentNullException.ThrowIfNull(point);
-
                     center.X += point.X / shape.Points.Count;
                     center.Y += point.Z / shape.Points.Count;
                     center.Z += -point.Y / shape.Points.Count;
@@ -2598,6 +2666,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                 var group = new MeshComponent()
                 {
                     Name = name,
+                    Text = name,
                     Transform = new MatrixTransform3D(matrix)
                 };
 
@@ -2610,7 +2679,8 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
 
         var element = new SectorGroup()
         {
-            Name = ""
+            Name = "",
+            Text = "",
         };
         foreach (var group in groups)
         {
@@ -2673,7 +2743,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         {
             if (mouseButtonEventArgs.RightButton == MouseButtonState.Pressed)
             {
-                Parent.GetLoggerService().Info("RighClick: " + mesh.Name);
+                Parent.GetLoggerService().Info("RighClick: " + mesh.Text);
             }
             else if (mouseButtonEventArgs.LeftButton == MouseButtonState.Pressed)
             {
@@ -2704,6 +2774,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
             {
                 sector.Element = RenderSector(wss, Appearances[0]);
                 sector.Element.Name = sector.Name.Replace("-", "n");
+                sector.Element.Text = sector.Name;
                 sector.IsLoaded = true;
                 sector.ShowElements = true;
                 sector.Text.IsRendering = false;
@@ -2726,6 +2797,29 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         SearchActive = true;
         RenderBlock(_data as worldStreamingBlock);
         CenterCameraToCoord(SearchPoint);
+    }
+
+    [RelayCommand]
+    public void AddSectorsToProject()
+    {
+        if (SelectedAppearance == null)
+        {
+            return;
+        }
+
+        foreach (var modelGroup in SelectedAppearance.ModelGroup)
+        {
+            if (!modelGroup.IsRendering)
+            {
+                continue;
+            }
+
+            if (modelGroup is SectorGroup sectorGroup)
+            {
+                var path = (ResourcePath)$@"base\worlds\03_night_city\_compiled\default\{sectorGroup.Text}.streamingsector";
+                _gameController.GetController().AddToMod(path);
+            }
+        }
     }
 
     public void RenderBlockSolo()
@@ -2752,44 +2846,53 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         Appearances.Add(app);
         SelectedAppearance = app;
 
-        var texts = new GroupModel3D()
+        var texts = new GroupModel3DExt()
         {
-            Name = "SectorNames"
+            Name = "SectorNames",
+            Text = "SectorNames"
         };
 
         var sectors = new List<Sector>();
 
-        var exterior = new GroupModel3D()
+        var exterior = new GroupModel3DExt()
         {
-            Name = "Exterior"
+            Name = "Exterior",
+            Text = "Exterior",
         };
-        var exterior_0 = new GroupModel3D()
+        var exterior_0 = new GroupModel3DExt()
         {
-            Name = "Exterior_0"
+            Name = "Exterior_0",
+            Text = "Exterior_0",
         };
-        var exterior_1 = new GroupModel3D()
+        var exterior_1 = new GroupModel3DExt()
         {
-            Name = "Exterior_1"
+            Name = "Exterior_1",
+            Text = "Exterior_1",
         };
-        var exterior_2 = new GroupModel3D()
+        var exterior_2 = new GroupModel3DExt()
         {
-            Name = "Exterior_2"
+            Name = "Exterior_2",
+            Text = "Exterior_2",
         };
-        var exterior_3 = new GroupModel3D()
+        var exterior_3 = new GroupModel3DExt()
         {
-            Name = "Exterior_3"
+            Name = "Exterior_3",
+            Text = "Exterior_3",
         };
-        var exterior_4 = new GroupModel3D()
+        var exterior_4 = new GroupModel3DExt()
         {
-            Name = "Exterior_4"
+            Name = "Exterior_4",
+            Text = "Exterior_4",
         };
-        var exterior_5 = new GroupModel3D()
+        var exterior_5 = new GroupModel3DExt()
         {
-            Name = "Exterior_5"
+            Name = "Exterior_5",
+            Text = "Exterior_5",
         };
-        var exterior_6 = new GroupModel3D()
+        var exterior_6 = new GroupModel3DExt()
         {
-            Name = "Exterior_6"
+            Name = "Exterior_6",
+            Text = "Exterior_6",
         };
         exterior.Children.Add(exterior_0);
         exterior.Children.Add(exterior_1);
@@ -2798,27 +2901,29 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         exterior.Children.Add(exterior_4);
         exterior.Children.Add(exterior_5);
         exterior.Children.Add(exterior_6);
-        var interior = new GroupModel3D()
+        var interior = new GroupModel3DExt()
         {
-            Name = "Interior"
+            Name = "Interior",
+            Text = "Interior",
         };
-        var quest = new GroupModel3D()
+        var quest = new GroupModel3DExt()
         {
-            Name = "Quest"
+            Name = "Quest",
+            Text = "Quest",
         };
-        var navigation = new GroupModel3D()
+        var navigation = new GroupModel3DExt()
         {
-            Name = "Navigation"
+            Name = "Navigation",
+            Text = "Navigation",
         };
-        var other = new GroupModel3D()
+        var other = new GroupModel3DExt()
         {
-            Name = "Other"
+            Name = "Other",
+            Text = "Other",
         };
 
         foreach (var desc in data.Descriptors)
         {
-            ArgumentNullException.ThrowIfNull(desc);
-
             if (!SearchActive || SearchPoint.X < desc.StreamingBox.Max.X && SearchPoint.X > desc.StreamingBox.Min.X &&
                 SearchPoint.Y < desc.StreamingBox.Max.Y && SearchPoint.Y > desc.StreamingBox.Min.Y &&
                 SearchPoint.Z < desc.StreamingBox.Max.Z && SearchPoint.Z > desc.StreamingBox.Min.Z)
@@ -2836,7 +2941,8 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                 var bbText = new WKBillboardTextModel3D()
                 {
                     Geometry = text,
-                    Name = Path.GetFileNameWithoutExtension(desc.Data.DepotPath.ToString().NotNull()).Replace("-", "n")
+                    Name = Path.GetFileNameWithoutExtension(desc.Data.DepotPath.ToString().NotNull()).Replace("-", "n"),
+                    Text = Path.GetFileNameWithoutExtension(desc.Data.DepotPath.ToString().NotNull()),
                 };
 
                 if (desc.Category == Enums.worldStreamingSectorCategory.Exterior)
@@ -2982,7 +3088,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
         RenderEntity(_data as entEntityTemplate);
     }
 
-    public Element3D? RenderEntity(entEntityTemplate? ent, Appearance? appearance = null, string? appearanceName = null)
+    public GroupModel3DExt? RenderEntity(entEntityTemplate? ent, Appearance? appearance = null, string? appearanceName = null)
     {
         if (ent == null)
         {
@@ -3002,7 +3108,6 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                     var slots = new Dictionary<string, string>();
                     foreach (var slot in slotset.Slots)
                     {
-                        ArgumentNullException.ThrowIfNull(slot);
                         var name = slot.SlotName.ToString().NotNull();
 
                         if (!slots.ContainsKey(name))
@@ -3087,7 +3192,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                 appearances = ent.Appearances.Where(x => x is not null && x.AppearanceName == appearanceName).ToList();
             }
 
-            var element = new GroupModel3D();
+            var element = new GroupModel3DExt();
 
             foreach (var app in appearances)
             {
@@ -3104,7 +3209,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                 {
                     ArgumentNullException.ThrowIfNull(handle);
 
-                    var appDef = (appearanceAppearanceDefinition)handle.GetValue();
+                    var appDef = (appearanceAppearanceDefinition)handle.GetValue().NotNull();
 
                     if (appDef.Name != app.AppearanceName || appDef.CompiledData.Data is not RedPackage appPkg)
                     {
@@ -3239,7 +3344,7 @@ public partial class RDTMeshViewModel : RedDocumentTabViewModel
                 //appearance.ModelGroup.Add(group);
             }
 
-            var element = new GroupModel3D();
+            var element = new GroupModel3DExt();
             foreach (var model in a.ModelGroup)
             {
                 element.Children.Add(model);

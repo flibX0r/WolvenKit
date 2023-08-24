@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using SharpGLTF.Schema2;
 using WolvenKit.Common.Conversion;
+using WolvenKit.Core.Extensions;
 using WolvenKit.Modkit.RED4.Tools;
 using WolvenKit.RED4.Archive;
 using WolvenKit.RED4.Archive.Buffer;
@@ -19,7 +20,7 @@ namespace WolvenKit.Modkit.RED4
         public bool GetStreamFromResourcePath(ResourcePath resourcePath, [NotNullWhen(true)] out Stream? stream)
         {
             var file = _archiveManager.Lookup(resourcePath.GetRedHash());
-            if (file.HasValue && file.Value is FileEntry fe)
+            if (file is { HasValue: true, Value: FileEntry fe })
             {
                 stream = new MemoryStream();
                 fe.Extract(stream);
@@ -43,15 +44,8 @@ namespace WolvenKit.Modkit.RED4
             return false;
         }
 
-        public bool ExportEntity(Stream entStream, CName appearance, FileInfo outfile)
-        {
-            if (_parserService.TryReadRed4File(entStream, out var cr2w))
-            {
-                return ExportEntity(cr2w, appearance, outfile);
-            }
-
-            return false;
-        }
+        public bool ExportEntity(Stream entStream, CName appearance, FileInfo outfile) 
+            => _parserService.TryReadRed4File(entStream, out var cr2w) && ExportEntity(cr2w, appearance, outfile);
 
         public bool ExportEntity(CR2WFile entFile, CName appearance, FileInfo outfile)
         {
@@ -105,7 +99,7 @@ namespace WolvenKit.Modkit.RED4
                 {
                     NotResolvableException.ThrowIfNotResolvable(esc.Name);
 
-                    if (esc.ParentTransform != null && esc.ParentTransform.GetValue() is entHardTransformBinding ehtb)
+                    if (esc.ParentTransform?.GetValue() is entHardTransformBinding ehtb)
                     {
                         NotResolvableException.ThrowIfNotResolvable(ehtb.BindName);
 
@@ -114,7 +108,6 @@ namespace WolvenKit.Modkit.RED4
                     slots[esc.Name!] = new Dictionary<string, string>();
                     foreach (var slot in esc.Slots)
                     {
-                        ArgumentNullException.ThrowIfNull(slot);
                         NotResolvableException.ThrowIfNotResolvable(slot.SlotName);
                         NotResolvableException.ThrowIfNotResolvable(slot.BoneName);
 
@@ -136,8 +129,6 @@ namespace WolvenKit.Modkit.RED4
 
             foreach (var app in eet.Appearances)
             {
-                ArgumentNullException.ThrowIfNull(app);
-
                 if (app.AppearanceName != appearance && appearance != "default")
                 {
                     continue;
@@ -155,8 +146,6 @@ namespace WolvenKit.Modkit.RED4
 
                 foreach (var appApp in aar.Appearances)
                 {
-                    ArgumentNullException.ThrowIfNull(appApp);
-
                     if (appApp.GetValue() is not appearanceAppearanceDefinition aad || (aad.Name != appearance && appearance != "default") || aad.CompiledData.Data is not RedPackage appPkg)
                     {
                         continue;
@@ -164,7 +153,7 @@ namespace WolvenKit.Modkit.RED4
 
                     var root = ModelRoot.CreateModel();
 
-                    if (animsFile is not null && GetFileFromResourcePath(anims.Rig.DepotPath, out var rigFile))
+                    if (GetFileFromResourcePath(anims.Rig.DepotPath, out var rigFile))
                     {
                         GetAnimation(animsFile, rigFile, ref root, true);
                     }
@@ -181,7 +170,7 @@ namespace WolvenKit.Modkit.RED4
                         {
                             NotResolvableException.ThrowIfNotResolvable(mc.Name);
 
-                            var transform = (entHardTransformBinding)mc.ParentTransform.GetValue();
+                            var transform = (entHardTransformBinding)mc.ParentTransform.GetValue().NotNull();
 
                             NotResolvableException.ThrowIfNotResolvable(transform.BindName);
                             NotResolvableException.ThrowIfNotResolvable(transform.SlotName);
@@ -245,7 +234,7 @@ namespace WolvenKit.Modkit.RED4
 
                             Node? node = null;
 
-                            var transform = (entHardTransformBinding)mc.ParentTransform.GetValue();
+                            var transform = (entHardTransformBinding)mc.ParentTransform.GetValue().NotNull();
 
                             NotResolvableException.ThrowIfNotResolvable(transform.BindName);
 

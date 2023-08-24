@@ -1,11 +1,11 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
-using System.Reactive;
+using System.IO;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.WindowsAPICodePack.Dialogs;
+using WolvenKit.App.Helpers;
 
 namespace WolvenKit.App.ViewModels.Dialogs;
 
@@ -37,21 +37,19 @@ public partial class ProjectWizardViewModel : DialogViewModel
     public string Title { get; set; }
 
     [NotNull]
-    [ObservableProperty] private string? _projectName = null!;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(OkCommand))]
+    private string? _projectName = null!;
+    
     [NotNull]
-    [ObservableProperty] private string? _projectPath = null!;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(OkCommand))]
+    private string? _projectPath = null!;
     [ObservableProperty] private string? _author;
     [ObservableProperty] private string? _email;
     [ObservableProperty] private string? _version;
     [ObservableProperty] private ObservableCollection<string> _projectType = new();
 
-
-    /// <summary>
-    /// Gets/Sets if all the fields are valid.
-    /// </summary>
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OkCommand))]
-    private bool _allFieldsValid;
 
     ///// <summary>
     ///// Gets/Sets the author's profile image brush.
@@ -71,21 +69,18 @@ public partial class ProjectWizardViewModel : DialogViewModel
     [RelayCommand]
     private void OpenProjectPath()
     {
-        var dlg = new CommonOpenFileDialog
+        var dlg = new FolderPicker
         {
-            AllowNonFileSystemItems = false,
-            Multiselect = false,
-            IsFolderPicker = true,
+            ForceFileSystem = true,
             Title = "Select the folder to create the project in"
         };
-        //dlg.Filters.Add(new CommonFileDialogFilter("Cyberpunk 2077 Project", "*.cpmodproj"));
 
-        if (dlg.ShowDialog() != CommonFileDialogResult.Ok)
+        if (dlg.ShowDialog() != true)
         {
             return;
         }
 
-        var result = dlg.FileName;
+        var result = dlg.ResultPath;
         if (string.IsNullOrEmpty(result))
         {
             return;
@@ -94,8 +89,13 @@ public partial class ProjectWizardViewModel : DialogViewModel
         ProjectPath = result;
     }
 
-    private bool CanExecuteOk() => AllFieldsValid;
-    [RelayCommand]
+    private bool CanExecuteOk() =>
+        !string.IsNullOrEmpty(ProjectName) && 
+        !string.IsNullOrEmpty(ProjectPath) &&
+        Directory.Exists(ProjectPath) &&
+        !Directory.Exists(Path.Combine(ProjectPath, ProjectName));
+
+    [RelayCommand(CanExecute = nameof(CanExecuteOk))]
     private void Ok()
     {
         FileHandler?.Invoke(this);

@@ -13,27 +13,6 @@ public partial class CR2WReader
     private CR2WFile _cr2wFile => (CR2WFile)_outputFile;
     private bool _parseBuffer;
 
-    private static readonly Dictionary<string, Type> s_bufferReaders = new();
-
-    static CR2WReader()
-    {
-        s_bufferReaders.Add("appearanceAppearanceDefinition.compiledData", typeof(appearanceAppearanceDefinitionReader));
-        s_bufferReaders.Add("entEntityTemplate.compiledData", typeof(entEntityTemplateReader));
-        s_bufferReaders.Add("inkWidgetLibraryItem.packageData", typeof(RedPackageReader));
-        s_bufferReaders.Add("entEntityInstanceData.buffer", typeof(RedPackageReader));
-        s_bufferReaders.Add("gamePersistentStateDataResource.buffer", typeof(RedPackageReader));
-        s_bufferReaders.Add("meshMeshMaterialBuffer.rawData", typeof(CR2WListReader));
-        s_bufferReaders.Add("entEntityParametersBuffer.parameterBuffers", typeof(CR2WListReader));
-        s_bufferReaders.Add("animAnimDataChunk.buffer", typeof(AnimationReader));
-        s_bufferReaders.Add("worldNavigationTileData.tilesBuffer", typeof(TilesReader));
-        s_bufferReaders.Add("worldSharedDataBuffer.buffer", typeof(WorldSharedDataBufferReader));
-        s_bufferReaders.Add("worldStreamingSector.transforms", typeof(worldNodeDataReader));
-        s_bufferReaders.Add("worldCollisionNode.compiledData", typeof(CollisionReader));
-        s_bufferReaders.Add("physicsGeometryCache.bufferTableSectors", typeof(GeometryCacheReader));
-        s_bufferReaders.Add("physicsGeometryCache.alwaysLoadedSectorDDB", typeof(GeometryCacheReader));
-        s_bufferReaders.Add("CGIDataResource.data", typeof(CGIDataReader));
-    }
-
     public EFileReadErrorCodes ReadFileInfo(out CR2WFileInfo? info)
     {
         var id = BaseStream.ReadStruct<uint>();
@@ -62,7 +41,7 @@ public partial class CR2WReader
         {
             foreach (var pair in info.StringDict)
             {
-                DataCollection.RawStringList.Add(pair.Value!);
+                DataCollection.RawStringList.Add(pair.Value);
             }
         }
 
@@ -155,20 +134,22 @@ public partial class CR2WReader
                 continue;
             }
 
-            foreach (var pointers in BufferQueue[i])
+            foreach (var pointer in BufferQueue[i])
             {
-                foreach (var parentType in pointers.GetValue().ParentTypes)
-                {
-                    buffer.ParentTypes.Add(parentType);
-                }
-                buffer.Parent = pointers.GetValue().Parent;
+                var clone = buffer.Clone();
 
-                pointers.SetValue(buffer);
+                foreach (var parentType in pointer.GetValue().ParentTypes)
+                {
+                    clone.ParentTypes.Add(parentType);
+                }
+                clone.Parent = pointer.GetValue().Parent;
+
+                pointer.SetValue(clone);
+
+                ParseBuffer(clone);
             }
 
             BufferQueue.Remove(i);
-
-            ParseBuffer(buffer);
         }
 
         if (BufferQueue.Count > 0)
@@ -200,14 +181,14 @@ public partial class CR2WReader
 
     #region Read Sections
 
-    private CName ReadName(CR2WNameInfo info, Dictionary<uint, CName> stringDict) => !stringDict.ContainsKey(info.offset) ? throw new TodoException() : stringDict[info.offset];
+    private CName ReadName(CR2WNameInfo info, Dictionary<uint, string> stringDict) => !stringDict.ContainsKey(info.offset) ? throw new TodoException() : stringDict[info.offset];
 
-    private CR2WImport ReadImport(CR2WImportInfo info, IDictionary<uint, CName> stringDict)
+    private CR2WImport ReadImport(CR2WImportInfo info, IDictionary<uint, string> stringDict)
     {
         var ret = new CR2WImport
         {
             ClassName = _namesList[info.className]!,
-            DepotPath = stringDict[info.offset].GetResolvedText().NotNull(),
+            DepotPath = stringDict[info.offset],
             Flags = (InternalEnums.EImportFlags)info.flags
         };
 
@@ -279,28 +260,16 @@ public partial class CR2WReader
             return;
         }
 
-        if (buffer.ParentTypes.Count != 1)
+        if (BufferHelper.TryGetReader(buffer, out var reader))
         {
-            return;
-        }
-
-        var parentType = buffer.ParentTypes.First();
-        if (s_bufferReaders.ContainsKey(parentType))
-        {
-            var ms = new MemoryStream(buffer.GetBytes());
-            if (System.Activator.CreateInstance(s_bufferReaders[parentType], ms) is not IBufferReader reader)
-            {
-                return;
-            }
-
             if (reader is IErrorHandler err)
             {
                 err.ParsingError += HandleParsingError;
             }
 
-            if (reader is Red4Reader red4Reader)
+            if (reader is IDataCollector collector)
             {
-                red4Reader.CollectData = CollectData;
+                collector.CollectData = CollectData;
             }
 
             if (reader is RedPackageReader pReader)
@@ -321,23 +290,12 @@ public partial class CR2WReader
                 }
             }
 
-            if (reader is CR2WListReader lReader)
-            {
-                lReader.CollectData = CollectData;
-            }
-
             reader.ReadBuffer(buffer);
 
-            if (reader is CR2WListReader { CollectData: true } lReader2)
+            if (reader is IDataCollector { CollectData: true } collector2)
             {
                 DataCollection.Buffers ??= new List<DataCollection>();
-                DataCollection.Buffers.Add(lReader2.DataCollection);
-            }
-
-            if (reader is Red4Reader { CollectData: true } red4Reader2)
-            {
-                DataCollection.Buffers ??= new List<DataCollection>();
-                DataCollection.Buffers.Add(red4Reader2.DataCollection);
+                DataCollection.Buffers.Add(collector2.DataCollection);
             }
         }
     }
@@ -364,11 +322,11 @@ public partial class CR2WReader
 
     #region Support
 
-    private Dictionary<uint, CName> ReadStringDict(CR2WTable stringInfoTable)
+    private Dictionary<uint, string> ReadStringDict(CR2WTable stringInfoTable)
     {
         Debug.Assert(BaseStream.Position == stringInfoTable.offset);
 
-        var result = new Dictionary<uint, CName>();
+        var result = new Dictionary<uint, string>();
         while (BaseStream.Position < (stringInfoTable.offset + stringInfoTable.itemCount))
         {
             var pos = (uint)BaseStream.Position - stringInfoTable.offset;

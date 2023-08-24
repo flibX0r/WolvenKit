@@ -269,6 +269,14 @@ namespace WolvenKit.RED4.Types
 		}
 
 		[Ordinal(36)] 
+		[RED("isBenchmarkSettings")] 
+		public CBool IsBenchmarkSettings
+		{
+			get => GetPropertyValue<CBool>();
+			set => SetPropertyValue<CBool>(value);
+		}
+
+		[Ordinal(37)] 
 		[RED("selectorCtrl")] 
 		public CWeakHandle<inkListController> SelectorCtrl
 		{
@@ -276,7 +284,7 @@ namespace WolvenKit.RED4.Types
 			set => SetPropertyValue<CWeakHandle<inkListController>>(value);
 		}
 
-		[Ordinal(37)] 
+		[Ordinal(38)] 
 		[RED("languageMenuIndex")] 
 		public CInt32 LanguageMenuIndex
 		{
@@ -286,21 +294,21 @@ namespace WolvenKit.RED4.Types
 
 		public SettingsMainGameController()
 		{
-			ScrollPanel = new();
-			SelectorWidget = new();
-			ButtonHintsManagerRef = new();
-			SettingsOptionsList = new();
-			ApplyButton = new();
-			ResetButton = new();
-			DefaultButton = new();
-			BrightnessButton = new();
-			HdrButton = new();
-			ControllerButton = new();
-			BenchmarkButton = new();
-			DescriptionText = new();
-			PreviousButtonHint = new();
-			NextButtonHint = new();
-			LanguageInstallProgressBarRoot = new();
+			ScrollPanel = new inkWidgetReference();
+			SelectorWidget = new inkWidgetReference();
+			ButtonHintsManagerRef = new inkWidgetReference();
+			SettingsOptionsList = new inkCompoundWidgetReference();
+			ApplyButton = new inkWidgetReference();
+			ResetButton = new inkWidgetReference();
+			DefaultButton = new inkWidgetReference();
+			BrightnessButton = new inkWidgetReference();
+			HdrButton = new inkWidgetReference();
+			ControllerButton = new inkWidgetReference();
+			BenchmarkButton = new inkWidgetReference();
+			DescriptionText = new inkTextWidgetReference();
+			PreviousButtonHint = new inkWidgetReference();
+			NextButtonHint = new inkWidgetReference();
+			LanguageInstallProgressBarRoot = new inkWidgetReference();
 			SettingsElements = new();
 			Data = new();
 			MenusList = new();

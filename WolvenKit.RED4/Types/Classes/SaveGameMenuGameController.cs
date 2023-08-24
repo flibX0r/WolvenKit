@@ -132,13 +132,21 @@ namespace WolvenKit.RED4.Types
 			set => SetPropertyValue<CBool>(value);
 		}
 
+		[Ordinal(19)] 
+		[RED("emptySlotController")] 
+		public CWeakHandle<LoadListItem> EmptySlotController
+		{
+			get => GetPropertyValue<CWeakHandle<LoadListItem>>();
+			set => SetPropertyValue<CWeakHandle<LoadListItem>>(value);
+		}
+
 		public SaveGameMenuGameController()
 		{
-			List = new();
-			ButtonHintsManagerRef = new();
-			GogButtonWidgetRef = new();
-			GogContainer = new();
-			Scrollbar = new();
+			List = new inkCompoundWidgetReference();
+			ButtonHintsManagerRef = new inkWidgetReference();
+			GogButtonWidgetRef = new inkWidgetReference();
+			GogContainer = new inkWidgetReference();
+			Scrollbar = new inkWidgetReference();
 			Saves = new();
 
 			PostConstruct();

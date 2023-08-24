@@ -212,12 +212,20 @@ namespace WolvenKit.RED4.Types
 			set => SetPropertyValue<CHandle<inkGameNotificationToken>>(value);
 		}
 
+		[Ordinal(28)] 
+		[RED("expansionToken")] 
+		public CHandle<inkGameNotificationToken> ExpansionToken
+		{
+			get => GetPropertyValue<CHandle<inkGameNotificationToken>>();
+			set => SetPropertyValue<CHandle<inkGameNotificationToken>>(value);
+		}
+
 		public gameuiPopupsManager()
 		{
-			BracketsContainer = new();
-			TutorialOverlayContainer = new();
-			TutorialData = new() { VideoType = Enums.gameVideoType.Unknown };
-			TutorialSettings = new() { CloseAtInput = true, Position = Enums.gamePopupPosition.Center, Margin = new() };
+			BracketsContainer = new inkCompoundWidgetReference();
+			TutorialOverlayContainer = new inkCompoundWidgetReference();
+			TutorialData = new gamePopupData { VideoType = Enums.gameVideoType.Unknown };
+			TutorialSettings = new gamePopupSettings { CloseAtInput = true, Position = Enums.gamePopupPosition.Center, Margin = new inkMargin() };
 
 			PostConstruct();
 		}

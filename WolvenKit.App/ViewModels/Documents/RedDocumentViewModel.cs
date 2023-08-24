@@ -16,6 +16,7 @@ using WolvenKit.Common.FNV1A;
 using WolvenKit.Core.Extensions;
 using WolvenKit.Core.Interfaces;
 using WolvenKit.Modkit.RED4;
+using WolvenKit.Modkit.Scripting;
 using WolvenKit.RED4.Archive;
 using WolvenKit.RED4.Archive.CR2W;
 using WolvenKit.RED4.Archive.IO;
@@ -42,6 +43,7 @@ public partial class RedDocumentViewModel : DocumentViewModel
     private readonly Red4ParserService _parserService;
     private readonly IWatcherService _watcherService;
     private readonly IArchiveManager _archiveManager;
+    private readonly IHookService _hookService;
 
     private readonly AppViewModel _appViewModel;
 
@@ -57,7 +59,9 @@ public partial class RedDocumentViewModel : DocumentViewModel
         IOptions<Globals> globals,
         Red4ParserService parserService,
         IWatcherService watcherService,
-        IArchiveManager archiveManager) : base(path)
+        IArchiveManager archiveManager,
+        IHookService hookService, 
+        bool isReadyOnly = false) : base(path)
     {
         _documentTabViewmodelFactory = documentTabViewmodelFactory;
         _chunkViewmodelFactory = chunkViewmodelFactory;
@@ -67,6 +71,7 @@ public partial class RedDocumentViewModel : DocumentViewModel
         _parserService = parserService;
         _watcherService = watcherService;
         _archiveManager = archiveManager;
+        _hookService = hookService;
 
         _appViewModel = appViewModel;
         _embedHashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -77,11 +82,12 @@ public partial class RedDocumentViewModel : DocumentViewModel
         };
 
         _path = path;
-        
+
 
         _extension = Path.GetExtension(path) != "" ? Path.GetExtension(path)[1..] : "";
 
         Cr2wFile = file;
+        IsReadOnly = isReadyOnly;
         _isInitialized = true;
         PopulateItems();
     }
@@ -159,8 +165,19 @@ public partial class RedDocumentViewModel : DocumentViewModel
             }
             else if (file is not null && Cr2wFile != null)
             {
-                using var writer = new CR2WWriter(fs);
-                writer.WriteFile(Cr2wFile);
+                var cr2w = Cr2wFile;
+                if (_hookService is AppHookService appHookService && !appHookService.OnSave(FilePath, ref cr2w))
+                {
+                    _loggerService.Error($"Error while processing onSave script");
+
+                    fs.Dispose();
+                    File.Delete(tmpPath);
+
+                    return;
+                }
+
+                using var writer = new CR2WWriter(fs) { LoggerService = _loggerService };
+                writer.WriteFile(cr2w);
             }
         }
         catch (Exception e)
@@ -274,13 +291,13 @@ public partial class RedDocumentViewModel : DocumentViewModel
                 TabItemViewModels.Add(new RDTGraphViewModel(ggr, this));
             }
         }
-        if (cls is scnSceneResource ssr)
-        {
-            if (_globals.Value.ENABLE_NODE_EDITOR)
-            {
-                TabItemViewModels.Add(new RDTGraphViewModel(ssr, this));
-            }
-        }
+        //if (cls is scnSceneResource ssr)
+        //{
+        //    if (_globals.Value.ENABLE_NODE_EDITOR)
+        //    {
+        //        TabItemViewModels.Add(new RDTGraphViewModel(ssr, this));
+        //    }
+        //}
     }
 
     public void PopulateItems()

@@ -1,6 +1,7 @@
 using WolvenKit.Common.Services;
 using WolvenKit.Core.Interfaces;
 using WolvenKit.RED4.Types.Exceptions;
+using WolvenKit.RED4.Types.Pools;
 
 namespace WolvenKit.RED4.Archive;
 public class FileEntry : ICyberGameFile
@@ -90,7 +91,7 @@ public class FileEntry : ICyberGameFile
 
     public void Extract(Stream output, bool decompressBuffers)
     {
-        if (Archive is not ICyberGameArchive ar)
+        if (Archive is not { } ar)
         {
             throw new InvalidParsingException($"{Archive.ArchiveAbsolutePath} is not a cyberpunk77 archive.");
         }
@@ -98,9 +99,9 @@ public class FileEntry : ICyberGameFile
         ar.CopyFileToStream(output, NameHash64, decompressBuffers);
     }
 
-    public async Task ExtractAsync(Stream output, bool decompressBuffers = false)
+    public async Task ExtractAsync(Stream output, bool decompressBuffers)
     {
-        if (Archive is not ICyberGameArchive ar)
+        if (Archive is not { } ar)
         {
             throw new InvalidParsingException($"{Archive.ArchiveAbsolutePath} is not a cyberpunk77 archive.");
         }
@@ -110,7 +111,7 @@ public class FileEntry : ICyberGameFile
 
     private string? GetNameString(string? defaultStr = null)
     {
-        var nameStr = _hashService?.Get(NameHash64);
+        var nameStr = ResourcePathPool.ResolveHash(NameHash64);
         if (nameStr == null)
         {
             return defaultStr;

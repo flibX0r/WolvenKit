@@ -78,8 +78,6 @@ public class GeometryCacheReader : Red4Reader, IBufferReader
 
                     for (int i = 0; i < faceDataCount; i++)
                     {
-                        ArgumentNullException.ThrowIfNull(entry.FaceData[i]);
-
                         var ra = new CArray<CUInt8>();
                         for (int j = 0; j < entry.FaceData[i]!.VertexCount; j++)
                         {
@@ -256,7 +254,7 @@ public class GeometryCacheReader : Red4Reader, IBufferReader
                             var ra = new CArray<CFloat>();
                             ra.Add(_reader.ReadUInt16() / ushort.MaxValue);
                             ra.Add(_reader.ReadUInt16() / ushort.MaxValue);
-                            uv.Add(uv);
+                            uv.Add(ra);
                         }
                         entry.Uvs.Add(uv);
                     }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Xaml;
 using WolvenKit.App.Models;
 using WolvenKit.Common;
 
@@ -33,15 +34,17 @@ public class SettingsDto : ISettingsDto
         ShowNodeRefAsHex = settings.ShowNodeRefAsHex;
         ShowTweakDBIDAsHex = settings.ShowTweakDBIDAsHex;
         ShowReferenceGraph = settings.ShowReferenceGraph;
+        GameLanguage = settings.GameLanguage;
         LaunchProfiles = settings.LaunchProfiles;
-
-        if (settings.SettingsVersion != 2)
+        ScriptStatus = settings.ScriptStatus;
+        
+        if (settings.SettingsVersion < 2)
         {
             MigrateFromV1ToV2();
         }
     }
 
-    public int SettingsVersion { get; set; }
+    public int SettingsVersion { get; set; } = 2;
 
     public bool SkipUpdateCheck { get; set; }
     public EUpdateChannel UpdateChannel { get; set; }
@@ -63,11 +66,13 @@ public class SettingsDto : ISettingsDto
     public bool ShowNodeRefAsHex { get; set; }
     public bool ShowTweakDBIDAsHex { get; set; }
     public bool ShowReferenceGraph { get; set; }
+    public EGameLanguage GameLanguage { get; set; } = EGameLanguage.en_us;
     public Dictionary<string, LaunchProfile>? LaunchProfiles { get; set; }
+    public Dictionary<string, bool>? ScriptStatus { get; set; }
 
     public SettingsManager ReconfigureSettingsManager(SettingsManager settingsManager)
     {
-        if (SettingsVersion != 2)
+        if (SettingsVersion < 2)
         {
             MigrateFromV1ToV2();
         }
@@ -95,6 +100,8 @@ public class SettingsDto : ISettingsDto
         settingsManager.ShowTweakDBIDAsHex = ShowTweakDBIDAsHex;
         settingsManager.ShowReferenceGraph = ShowReferenceGraph;
         settingsManager.LaunchProfiles = LaunchProfiles;
+        settingsManager.ScriptStatus = ScriptStatus;
+        settingsManager.GameLanguage = GameLanguage;
 
         return settingsManager;
     }

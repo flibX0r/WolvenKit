@@ -1,4 +1,3 @@
-#nullable enable
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -10,20 +9,11 @@ using WolvenKit.RED4.Types;
 
 namespace WolvenKit.RED4.CR2W.JSON;
 
-public class RedFileDtoConverter : JsonConverter<RedFileDto>, ICustomRedConverter
+public class RedFileDtoConverter : CustomRedConverter<RedFileDto>
 {
     private readonly ReferenceResolver<RedBaseClass> _referenceResolver;
-    private bool _skipHeader;
 
-    public RedFileDtoConverter(ReferenceResolver<RedBaseClass> referenceResolver, bool skipHeader = false)
-    {
-        _referenceResolver = referenceResolver;
-        _skipHeader = skipHeader;
-    }
-
-    public void SetSkipHeader(bool skipHeader) => _skipHeader = skipHeader;
-
-    public object? ReadRedType(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader, typeToConvert, options);
+    public RedFileDtoConverter(ReferenceResolver<RedBaseClass> referenceResolver) => _referenceResolver = referenceResolver;
 
     public override RedFileDto Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -320,7 +310,7 @@ public class RedFileDtoConverter : JsonConverter<RedFileDto>, ICustomRedConverte
 
         writer.WriteStartObject();
 
-        if (!_skipHeader)
+        if (!RedJsonSerializer.RedOptions.SkipHeader)
         {
             writer.WritePropertyName("Header");
             JsonSerializer.Serialize(writer, value.Header, options);

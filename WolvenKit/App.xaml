@@ -44,14 +44,14 @@
                             <tools:ImportExportView />
                         </Grid>
                     </DataTemplate>-->
-                    <DataTemplate DataType="{x:Type importvms:TextureImportViewModel}">
+                    <DataTemplate DataType="{x:Type importvms:ImportViewModel}">
                         <Grid>
-                            <importers:TextureImportView />
+                            <importers:ImportView />
                         </Grid>
                     </DataTemplate>
-                    <DataTemplate DataType="{x:Type exportvms:TextureExportViewModel}">
+                    <DataTemplate DataType="{x:Type exportvms:ExportViewModel}">
                         <Grid>
-                            <exporters:TextureExportView />
+                            <exporters:ExportView />
                         </Grid>
                     </DataTemplate>
 
@@ -82,6 +82,11 @@
                     <DataTemplate DataType="{x:Type docvm:WScriptDocumentViewModel}">
                         <Grid>
                             <documents:WScriptDocumentView />
+                        </Grid>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type toolvm:HashToolViewModel}">
+                        <Grid>
+                            <tools:HashToolView />
                         </Grid>
                     </DataTemplate>
 
@@ -156,7 +161,7 @@
                 BasedOn="{StaticResource {x:Type Button}}"
                 TargetType="Button">
                 <Setter Property="MinWidth" Value="88" />
-                <Setter Property="Visibility" Value="{Binding IsEnabled, RelativeSource={RelativeSource Self}, Converter={StaticResource Boolean2VisibilityConverter}}" />
+                <Setter Property="Visibility" Value="{Binding IsEnabled, RelativeSource={RelativeSource Self}, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <Setter Property="Margin" Value="5,0" />
                 <Setter Property="Background" Value="Transparent" />
             </Style>

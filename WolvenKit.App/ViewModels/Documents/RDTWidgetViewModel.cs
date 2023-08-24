@@ -107,12 +107,12 @@ public partial class RDTWidgetViewModel : RedDocumentTabViewModel
     {
         return Task.Run(() =>
         {
-            if (Application.Current.Resources.Contains(path))
+            if (InkCache.Resources.Contains(path))
             {
                 return;
             }
 
-            Application.Current.Resources.Add(path, false);
+            InkCache.Resources.Add(path, false);
 
             var ffFile = Parent.GetFileFromDepotPath(path);
             if (ffFile == null || ffFile.RootChunk is not inkFontFamilyResource ffr)
@@ -122,10 +122,8 @@ public partial class RDTWidgetViewModel : RedDocumentTabViewModel
 
             foreach (var fs in ffr.FontStyles)
             {
-                ArgumentNullException.ThrowIfNull(fs);
-                
                 var key = "FontCollection/" + path + "#" + fs.StyleName;
-                if (!Application.Current.Resources.Contains(key))
+                if (!InkCache.Resources.Contains(key))
                 {
                     var fontFile = Parent.GetFileFromDepotPath(fs.Font.DepotPath);
                     if (fontFile == null || fontFile.RootChunk is not rendFont rf)
@@ -140,11 +138,11 @@ public partial class RDTWidgetViewModel : RedDocumentTabViewModel
                     pfc.AddMemoryFont(ptrData, fontBytes.Length);
                     Marshal.FreeCoTaskMem(ptrData);
 
-                    Application.Current.Resources.Add(key, pfc);
+                    InkCache.Resources.Add(key, pfc);
                 }
             }
 
-            Application.Current.Resources[path] = true;
+            InkCache.Resources[path] = true;
         });
     }
 
@@ -167,8 +165,6 @@ public partial class RDTWidgetViewModel : RedDocumentTabViewModel
 
             foreach (var style in sr.Styles)
             {
-                ArgumentNullException.ThrowIfNull(style);
-
                 if (!StyleStates.Contains(style.State.ToString().NotNull()))
                 {
                     StyleStates.Add(style.State.ToString().NotNull());
@@ -176,12 +172,10 @@ public partial class RDTWidgetViewModel : RedDocumentTabViewModel
 
                 foreach (var prop in style.Properties)
                 {
-                    ArgumentNullException.ThrowIfNull(prop);
-
                     var key = "CVariant/Default/" + prop.PropertyPath + "#" + style.State;
-                    if (!Application.Current.Resources.Contains(key))
+                    if (!InkCache.Resources.Contains(key))
                     {
-                        Application.Current.Resources.Add(key, prop.Value);
+                        InkCache.Resources.Add(key, prop.Value);
                     }
                 }
             }
@@ -193,8 +187,6 @@ public partial class RDTWidgetViewModel : RedDocumentTabViewModel
 
             foreach (var theme in sr.Themes)
             {
-                ArgumentNullException.ThrowIfNull(theme);
-
                 var themeFile = Parent.GetFileFromDepotPath(theme.StyleResource.DepotPath);
                 if (themeFile == null || themeFile.RootChunk is not inkStyleResource isr)
                 {
@@ -203,8 +195,6 @@ public partial class RDTWidgetViewModel : RedDocumentTabViewModel
 
                 foreach (var style in isr.Styles)
                 {
-                    ArgumentNullException.ThrowIfNull(style);
-
                     if (!StyleStates.Contains(style.State.ToString().NotNull()))
                     {
                         StyleStates.Add(style.State.ToString().NotNull());
@@ -212,12 +202,10 @@ public partial class RDTWidgetViewModel : RedDocumentTabViewModel
 
                     foreach (var prop in style.Properties)
                     {
-                        ArgumentNullException.ThrowIfNull(prop);
-
                         var key = "CVariant/" + theme.ThemeID + "/" + prop.PropertyPath + "#" + style.State;
-                        if (!Application.Current.Resources.Contains(key))
+                        if (!InkCache.Resources.Contains(key))
                         {
-                            Application.Current.Resources.Add(key, prop.Value);
+                            InkCache.Resources.Add(key, prop.Value);
                         }
                     }
                 }
@@ -232,12 +220,12 @@ public partial class RDTWidgetViewModel : RedDocumentTabViewModel
 
     public async Task LoadInkAtlasAsync(string path)
     {
-        if (Application.Current.Resources.Contains(path))
+        if (InkCache.Resources.Contains(path))
         {
             return;
         }
 
-        Application.Current.Resources.Add(path, false);
+        InkCache.Resources.Add(path, false);
 
         var atlasFile = Parent.GetFileFromDepotPath(path);
         if (atlasFile == null || atlasFile.RootChunk is not inkTextureAtlas atlas)
@@ -271,10 +259,8 @@ public partial class RDTWidgetViewModel : RedDocumentTabViewModel
 
         foreach (var part in slot.Parts)
         {
-            ArgumentNullException.ThrowIfNull(part);
-
             var key = "ImageSource/" + path + "#" + part.PartName;
-            if (!Application.Current.Resources.Contains(key))
+            if (!InkCache.Resources.Contains(key))
             {
                 var x = Math.Round(part.ClippingRectInUVCoords.Left * image.Metadata.Width);
                 var y = Math.Round(part.ClippingRectInUVCoords.Top * image.Metadata.Height);
@@ -283,22 +269,20 @@ public partial class RDTWidgetViewModel : RedDocumentTabViewModel
 
                 var partImage = await Task.Run(() => ImageDecoder.CreateBitmapImage(image.Crop((int)x, (int)y, (int)width, (int)height)));
 
-                Application.Current.Resources.Add(key, partImage);
+                InkCache.Resources.Add(key, partImage);
             }
         }
 
         foreach (var slice in slot.Slices)
         {
-            ArgumentNullException.ThrowIfNull(slice);
-
             var key = "RectF/" + path + "#" + slice.PartName;
-            if (!Application.Current.Resources.Contains(key))
+            if (!InkCache.Resources.Contains(key))
             {
-                Application.Current.Resources.Add(key, slice.NineSliceScaleRect);
+                InkCache.Resources.Add(key, slice.NineSliceScaleRect);
             }
         }
 
-        Application.Current.Resources[path] = true;
+        InkCache.Resources[path] = true;
     }
 
     public override ERedDocumentItemType DocumentItemType => ERedDocumentItemType.W2rcBuffer;
