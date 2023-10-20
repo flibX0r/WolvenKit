@@ -33,7 +33,7 @@ namespace WolvenKit.RED4.CR2W.Archive
         private bool _isManagerLoading;
         private bool _isManagerLoaded;
 
-        private static readonly List<string> s_loadOrder = new() { "memoryresident", "basegame", "audio", "lang" };
+        private static readonly List<string> s_loadOrder = new() { "memoryresident", "ep1", "basegame", "audio", "lang" };
 
         #endregion Fields
 
@@ -114,7 +114,7 @@ namespace WolvenKit.RED4.CR2W.Archive
 
         #region sorting
 
-        private static int CompareArchives(string x, string y)
+        private static int CompareArchives(string? x, string? y)
         {
             if (ReferenceEquals(x, y))
             {
@@ -148,17 +148,17 @@ namespace WolvenKit.RED4.CR2W.Archive
         /// <summary>
         /// Loads all archives from a folder
         /// </summary>
-        /// <param name="archivedir"></param>
-        public override void LoadFromFolder(DirectoryInfo archivedir)
+        /// <param name="archiveDir"></param>
+        public override void LoadFromFolder(DirectoryInfo archiveDir)
         {
-            if (!archivedir.Exists)
+            if (!archiveDir.Exists)
             {
                 return;
             }
 
             IsManagerLoading = true;
 
-            var archiveFiles = Directory.GetFiles(archivedir.FullName, "*.archive").ToList();
+            var archiveFiles = Directory.GetFiles(archiveDir.FullName, "*.archive").ToList();
             archiveFiles.Sort(CompareArchives);
 
             foreach (var file in archiveFiles)
@@ -189,25 +189,46 @@ namespace WolvenKit.RED4.CR2W.Archive
 
             IsManagerLoading = true;
 
-            var archivedir = Path.Combine(di.Parent.Parent.FullName, "archive", "pc", "content");
-
             var sw = new Stopwatch();
             var sw2 = new Stopwatch();
             sw.Start();
             sw2.Start();
 
-            var archiveFiles = Directory.GetFiles(archivedir, "*.archive").ToList();
-            archiveFiles.Sort(CompareArchives);
-
             var cnt = 0;
-            foreach (var file in archiveFiles)
+
+            var baseDir = Path.Combine(di.Parent.Parent.FullName, "archive", "pc", "content");
+            var baseFiles = Directory.GetFiles(baseDir, "*.archive").ToList();
+            baseFiles.Sort(CompareArchives);
+
+            var totalCnt = baseFiles.Count;
+
+            var ep1Dir = Path.Combine(di.Parent.Parent.FullName, "archive", "pc", "ep1");
+            if (Directory.Exists(ep1Dir))
+            {
+                var ep1Files = Directory.GetFiles(ep1Dir, "*.archive").ToList();
+                ep1Files.Sort(CompareArchives);
+
+                totalCnt += ep1Files.Count;
+
+                foreach (var file in ep1Files)
+                {
+                    sw.Restart();
+
+                    LoadArchive(file, EArchiveSource.EP1);
+                    cnt++;
+
+                    _logger.Debug($"Loaded archive {Path.GetFileName(file)} {cnt}/{totalCnt} in {sw.ElapsedMilliseconds}ms");
+                }
+            }
+
+            foreach (var file in baseFiles)
             {
                 sw.Restart();
 
-                LoadArchive(file);
+                LoadArchive(file, EArchiveSource.Base);
                 cnt++;
 
-                _logger.Debug($"Loaded archive {Path.GetFileName(file)} {cnt}/{archiveFiles.Count} in {sw.ElapsedMilliseconds}ms");
+                _logger.Debug($"Loaded archive {Path.GetFileName(file)} {cnt}/{totalCnt} in {sw.ElapsedMilliseconds}ms");
             }
 
             if (rebuildtree)
@@ -237,8 +258,8 @@ namespace WolvenKit.RED4.CR2W.Archive
         /// Load a single bundle
         /// </summary>
         /// <param name="path"></param>
-        /// <param name="ispatch"></param>
-        public override void LoadArchive(string path, bool ispatch = false)
+        /// <param name="source"></param>
+        public override void LoadArchive(string path, EArchiveSource source = EArchiveSource.Unknown)
         {
             if (Archives.Lookup(path).HasValue)
             {
@@ -253,6 +274,7 @@ namespace WolvenKit.RED4.CR2W.Archive
                 return;
             }
 
+            archive.Source = source;
             Archives.AddOrUpdate(archive);
         }
 
@@ -262,7 +284,8 @@ namespace WolvenKit.RED4.CR2W.Archive
         /// <param name="filename">
         /// file to process
         /// </param>
-        public override void LoadModArchive(string filename)
+        /// <param name="analyzeFiles"></param>
+        public override void LoadModArchive(string filename, bool analyzeFiles = true)
         {
             if (ModArchives.Lookup(filename).HasValue)
             {
@@ -277,30 +300,35 @@ namespace WolvenKit.RED4.CR2W.Archive
                 return;
             }
 
-            var importError = false;
-            foreach (var (_, gameFile) in archive.Files)
-            {
-                try
-                {
-                    using var ms = new MemoryStream();
-                    archive.ExtractFile(gameFile, ms);
+            archive.Source = EArchiveSource.Mod;
 
-                    if (_wolvenkitFileService.TryReadRed4FileHeaders(ms, out var info))
+            if (analyzeFiles)
+            {
+                var importError = false;
+                foreach (var (_, gameFile) in archive.Files)
+                {
+                    try
                     {
-                        info.GetImports();
+                        using var ms = new MemoryStream();
+                        archive.ExtractFile(gameFile, ms);
+
+                        if (_wolvenkitFileService.TryReadRed4FileHeaders(ms, out var info))
+                        {
+                            info.GetImports();
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        importError = true;
+                        _logger.Debug($"Error while loading the following mod file: {gameFile.FileName}");
                     }
                 }
-                catch (Exception)
-                {
-                    importError = true;
-                    _logger.Debug($"Error while loading the following mod file: {gameFile.FileName}");
-                }
-            }
-            archive.ReleaseFileHandle();
+                archive.ReleaseFileHandle();
 
-            if (importError)
-            {
-                _logger.Warning($"Error while loading the following mod archive: {filename}");
+                if (importError)
+                {
+                    _logger.Warning($"Error while loading the following mod archive: {filename}");
+                }
             }
 
             ModArchives.AddOrUpdate(archive);
@@ -309,7 +337,7 @@ namespace WolvenKit.RED4.CR2W.Archive
         /// <summary>
         /// Loads bundles from specified mods and dlc folder
         /// </summary>
-        public override void LoadModsArchives(FileInfo executable)
+        public override void LoadModsArchives(FileInfo executable, bool analyzeFiles = true)
         {
             var di = executable.Directory;
             if (di?.Parent?.Parent is null)
@@ -325,23 +353,32 @@ namespace WolvenKit.RED4.CR2W.Archive
 
             ModArchives.Clear();
 
-            var modsDirs = new DirectoryInfo[]
-            {
-                new(Path.Combine(di.Parent.Parent.FullName, "mods")),
-                new(Path.Combine(di.Parent.Parent.FullName, "archive", "pc", "mod")),
-            };
+            var redModBasePath = Path.Combine(di.Parent.Parent.FullName, "mods");
+            var legacyModPath = Path.Combine(di.Parent.Parent.FullName, "archive", "pc", "mod");
 
             var files = new List<string>();
-            foreach (var modsDir in modsDirs)
+            if (Directory.Exists(redModBasePath))
             {
-                if (!modsDir.Exists)
+                foreach (var redModPath in Directory.GetDirectories(redModBasePath))
                 {
-                    continue;
-                }
+                    var archiveDir = Path.Combine(redModPath, "archives");
+                    if (!Directory.Exists(archiveDir))
+                    {
+                        continue;
+                    }
 
-                foreach (var file in Directory.GetFiles(modsDir.FullName, "*.archive", SearchOption.AllDirectories))
+                    foreach (var archiveFile in Directory.GetFiles(archiveDir, "*.archive"))
+                    {
+                        files.Add(archiveFile);
+                    }
+                }
+            }
+
+            if (Directory.Exists(legacyModPath))
+            {
+                foreach (var archiveFile in Directory.GetFiles(legacyModPath, "*.archive"))
                 {
-                    files.Add(file);
+                    files.Add(archiveFile);
                 }
             }
 
@@ -350,12 +387,62 @@ namespace WolvenKit.RED4.CR2W.Archive
 
             foreach (var file in files)
             {
-                LoadModArchive(file);
+                LoadModArchive(file, analyzeFiles);
             }
 
             foreach (var modArchive in ModArchives.Items)
             {
                 modArchive.ArchiveRelativePath = Path.GetRelativePath(di.Parent.Parent.FullName, modArchive.ArchiveAbsolutePath);
+            }
+
+            RebuildModRoot();
+
+            _modCache.Edit(innerCache =>
+            {
+                innerCache.Clear();
+                innerCache.Add(ModRoots);
+            });
+
+            IsManagerLoading = false;
+            IsManagerLoaded = true;
+        }
+
+        public override void LoadAdditionalModArchives(string archiveBasePath, bool analyzeFiles = true)
+        {
+            if (!Directory.Exists(archiveBasePath))
+            {
+                return;
+            }
+
+            IsManagerLoading = true;
+
+            var files = new List<string>();
+            foreach (var archiveFile in Directory.GetFiles(archiveBasePath, "*.archive", SearchOption.AllDirectories))
+            {
+                files.Add(archiveFile);
+            }
+
+            if (files.Count == 0)
+            {
+                return;
+            }
+
+            files.Sort(string.CompareOrdinal);
+            files.Reverse();
+
+            foreach (var file in files)
+            {
+                LoadModArchive(file, analyzeFiles);
+            }
+
+            foreach (var modArchive in ModArchives.Items)
+            {
+                if (!files.Contains(modArchive.ArchiveAbsolutePath))
+                {
+                    continue;
+                }
+
+                modArchive.ArchiveRelativePath = Path.GetRelativePath(archiveBasePath, modArchive.ArchiveAbsolutePath);
             }
 
             RebuildModRoot();

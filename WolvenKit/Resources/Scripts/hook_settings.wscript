@@ -1,7 +1,17 @@
 // @version 1.0
 
+/* 
+ * See the documentation for more info:
+ * https://wiki.redmodding.org/wolvenkit/wolvenkit-app/file-validation
+ */
 const Settings = {
-	Enabled: true,
+    Enabled: true,
+    /*
+     * Under certain circumstances, file validation can correct mistakes in the files.
+     * Set this to "true" to disable the feature for good.
+     */
+    DisableAutofix: false,
+    /* .anims files */
     Anims: {
         /*
          * Set this to "false" to disable file validation for .anims files.
@@ -45,11 +55,6 @@ const Settings = {
          * e.g. if you're loading different variants from the same app file depending on a tag.
          */
         checkPotentialOverrideCollisions: false,
-        /*
-         * Set this to "false" to disable warnings about cook data. 
-         * This is the reason why the cookedAppsNulled mod exists.
-         */
-        checkCookPaths: true,
     },
     Csv: {
         /*
@@ -90,6 +95,20 @@ const Settings = {
          */
         checkDynamicAppearanceTag: true,
     },
+    Inkatlas: {
+        /*
+         * Set this to "false" to disable file validation for .inkatlas files.
+         */
+        Enabled: true,
+        /*
+         * Set this to "false" to skip path check for dynamicTexture and dynamicTextureSlot
+         */
+        CheckDynamicTexture: true,
+        /*
+         * Set this to "false" to skip path check for texture slots (only the first must be set)
+         */
+        CheckSlots: true,
+    },
     Json: {
         /*
          * Set this to "false" to disable file validation for .json files.
@@ -99,7 +118,10 @@ const Settings = {
          * Check for primary key duplication and duplicate entries? 
          */
         checkDuplicateKeys: true,
-        
+        /*
+         * Check for duplicate translation entries (same text) 
+         */
+        checkDuplicateTranslations: true,        
         /*
          * Warn if default value isn't set? 
          */
@@ -114,11 +136,23 @@ const Settings = {
          * Should file validation check materials along the daisy chain? (Only outside of /base) 
          */
         validateMaterialsRecursively: true,
-        
+        /*
+         * If you're using placeholder materials, should file validation warn you about properties in values[]? 
+         */
+        validatePlaceholderValues: false,
+        /*
+         * If you're using placeholder materials, should file validation check depot paths? 
+         * Incorrect depot paths will cause crashes, so you might want to leave this enabled.
+         */
+        validatePlaceholderMaterialPaths: true,
         /*
          * Should file validation warn you if two of your materials use the same mlsetup?
          */
-        checkDuplicateMlSetupFilePaths: true,        
+        checkDuplicateMlSetupFilePaths: true,
+        /*
+         * Should file validation verify paths to external materials in your mesh?
+         */
+        checkExternalMaterialPaths: true,
     },
     Mi: {
         /*
@@ -136,10 +170,17 @@ const Settings = {
          */
         Enabled: true,
         /*
-         * Disable reordering of file indices in the workspot. 
-         * (This feature requires that you close and reopen your file after saving, which the message will tell you about)
+         * Disable reordering of file indices in the workspot. Will do nothing if:
+         * - Settings.DisableAutofix is true
          */
         fixIndexOrder: true,
+
+        /*
+         * Disable reordering of file indices in the workspot. Will do nothing if: 
+         * - Settings.DisableAutofix is true
+         * - Settings.Workspot.fixIndexOrder is false
+         */
+        autoReopenFile: false,
 
         /*
          * Set this to "false" to suppress the warning "Items from .anim files not found in .workspot:"

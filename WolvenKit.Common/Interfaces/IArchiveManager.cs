@@ -35,9 +35,10 @@ namespace WolvenKit.Common
         #endregion Properties
 
         public void LoadGameArchives(FileInfo executable, bool rebuildtree = true);
-        public void LoadArchive(string path, bool ispatch = false);
-        public void LoadModArchive(string filename);
-        public void LoadModsArchives(FileInfo executable);
+        public void LoadArchive(string path, EArchiveSource source = EArchiveSource.Unknown);
+        public void LoadModArchive(string filename, bool analyzeFiles = true);
+        public void LoadModsArchives(FileInfo executable, bool analyzeFiles = true);
+        public void LoadAdditionalModArchives(string archiveBasePath, bool analyzeFiles = true);
 
         public Dictionary<string, IEnumerable<IGameFile>> GetGroupedFiles();
         public IEnumerable<FileEntry> GetFiles();

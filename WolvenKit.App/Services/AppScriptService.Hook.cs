@@ -24,6 +24,8 @@ public partial class AppScriptService
     {
         _hookService.RegisterOnExport(OnExportHook);
         _hookService.RegisterOnPreImport(OnPreImportHook);
+        _hookService.RegisterOnImportFromJson(OnImportFromJson);
+        _hookService.RegisterOnParsingError(OnParsingError);
         if (_hookService is AppHookService appHookService)
         {
             appHookService.RegisterOnSave(OnSaveHook);
@@ -72,7 +74,7 @@ public partial class AppScriptService
             var dto = new RedFileDto(cr2wFile);
             dto.Header.ArchiveFileName = filePath;
 
-            var (success, json) = OnSaveExecute(script.Path, extStr, RedJsonSerializer.Serialize(dto));
+            var (success, json) = OnSaveExecute(script, extStr, RedJsonSerializer.Serialize(dto));
             if (success == Enums.EBOOL.UNINITIALZED)
             {
                 return true;
@@ -97,9 +99,9 @@ public partial class AppScriptService
         return true;
     }
 
-    private (Enums.EBOOL, string) OnSaveExecute(string scriptFilePath, string extStr, string json)
+    private (Enums.EBOOL, string) OnSaveExecute(ScriptFile scriptFile, string extStr, string json)
     {
-        var result = HookExecute(scriptFilePath, "onSave", scriptObj => scriptObj.onSave(extStr, json));
+        var result = HookExecute(scriptFile, "onSave", scriptObj => scriptObj.onSave(extStr, json));
 
         if ((bool)result[NoHook])
         {
@@ -133,7 +135,7 @@ public partial class AppScriptService
         {
             if (scriptFile.HookExtension == "global")
             {
-                var (status, newArgs) = OnExportExecute(scriptFile.Path, fileInfo, args);
+                var (status, newArgs) = OnExportExecute(scriptFile, fileInfo, args);
                 if (status == Enums.EBOOL.TRUE)
                 {
                     args = newArgs!;
@@ -142,10 +144,10 @@ public partial class AppScriptService
         }
     }
 
-    private (Enums.EBOOL, GlobalExportArgs?) OnExportExecute(string scriptFilePath, FileInfo fileInfo, GlobalExportArgs args)
+    private (Enums.EBOOL, GlobalExportArgs?) OnExportExecute(ScriptFile scriptFile, FileInfo fileInfo, GlobalExportArgs args)
     {
         var jsonArgs = JsonSerializer.Serialize(args, new JsonSerializerOptions { Converters = { new ImportExportArgsConverter() } });
-        var result = HookExecute(scriptFilePath, "onExport", scriptObj => scriptObj.onExport(fileInfo.FullName, jsonArgs));
+        var result = HookExecute(scriptFile, "onExport", scriptObj => scriptObj.onExport(fileInfo.FullName, jsonArgs));
 
         if ((bool)result[NoHook])
         {
@@ -173,7 +175,7 @@ public partial class AppScriptService
         {
             if (scriptFile.HookExtension == "global")
             {
-                var (status, newArgs) = OnPreImportExecute(scriptFile.Path, rawRelative, args, outDir);
+                var (status, newArgs) = OnPreImportExecute(scriptFile, rawRelative, args, outDir);
                 if (status == Enums.EBOOL.TRUE)
                 {
                     args = newArgs!;
@@ -182,10 +184,10 @@ public partial class AppScriptService
         }
     }
 
-    private (Enums.EBOOL, GlobalImportArgs?) OnPreImportExecute(string scriptFilePath, RedRelativePath rawRelative, GlobalImportArgs args, DirectoryInfo? outDir)
+    private (Enums.EBOOL, GlobalImportArgs?) OnPreImportExecute(ScriptFile scriptFile, RedRelativePath rawRelative, GlobalImportArgs args, DirectoryInfo? outDir)
     {
         var jsonArgs = JsonSerializer.Serialize(args, new JsonSerializerOptions { Converters = { new ImportExportArgsConverter() } });
-        var result = HookExecute(scriptFilePath, "onPreImport", scriptObj => scriptObj.onPreImport(rawRelative, jsonArgs));
+        var result = HookExecute(scriptFile, "onPreImport", scriptObj => scriptObj.onPreImport(rawRelative, jsonArgs));
 
         if ((bool)result[NoHook])
         {
@@ -205,6 +207,136 @@ public partial class AppScriptService
         }
 
         return (Enums.EBOOL.TRUE, args);
+    }
+
+    private void OnImportFromJson(ref string jsonText)
+    {
+        foreach (var scriptFile in GetScripts())
+        {
+            if (scriptFile.HookExtension == "global")
+            {
+                var (status, newJsonText) = OnImportFromJsonExecute(scriptFile, jsonText);
+                if (status == Enums.EBOOL.TRUE)
+                {
+                    jsonText = newJsonText!;
+                }
+            }
+        }
+    }
+
+    private (Enums.EBOOL, string?) OnImportFromJsonExecute(ScriptFile scriptFile, string jsonText)
+    {
+        var result = HookExecute(scriptFile, "onImportFromJson", scriptObj => scriptObj.onImportFromJson(jsonText));
+
+        if ((bool)result[NoHook])
+        {
+            return (Enums.EBOOL.UNINITIALZED, null);
+        }
+
+        if (!result.TryGetValue("jsonText", out var newJsonText) || newJsonText is not string)
+        {
+            _loggerService.Error($"onSave: Missing \"jsonText\" (string) return value");
+            return (Enums.EBOOL.UNINITIALZED, null);
+        }
+
+        return (Enums.EBOOL.TRUE, (string)newJsonText);
+    }
+
+    private bool OnParsingError(ParsingErrorEventArgs eventData)
+    {
+        foreach (var scriptFile in GetScripts())
+        {
+            if (scriptFile.HookExtension == "global")
+            {
+                var status = OnParsingErrorExecute(scriptFile, eventData);
+                if (status == Enums.EBOOL.TRUE)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private record InvalidRTTIEventArgsWrapper(string PropertyName, string ExpectedType, CVariant Value);
+    private record InvalidEnumValueEventArgsWrapper(string EnumType, string StringValue);
+
+    private Enums.EBOOL OnParsingErrorExecute(ScriptFile scriptFile, ParsingErrorEventArgs eventData)
+    {
+        var jsonText = SerializeArgs();
+        if (jsonText == null)
+        {
+            return Enums.EBOOL.UNINITIALZED;
+        }
+
+        var result = HookExecute(scriptFile, "onParsingError", scriptObj => scriptObj.onParsingError(jsonText));
+
+        if ((bool)result[NoHook])
+        {
+            return Enums.EBOOL.UNINITIALZED;
+        }
+
+        if (!result.TryGetValue("isPatched", out var isPatchedObj) || isPatchedObj is not bool isPatched)
+        {
+            _loggerService.Error($"onSave: Missing \"isPatched\" (string) return value");
+            return Enums.EBOOL.UNINITIALZED;
+        }
+
+        if (!result.TryGetValue("jsonText", out var newJsonText) || newJsonText is not string newJsonTextStr)
+        {
+            _loggerService.Error($"onSave: Missing \"jsonText\" (string) return value");
+            return Enums.EBOOL.UNINITIALZED;
+        }
+
+        if (isPatched && DeserializeArgs(newJsonTextStr))
+        {
+            return Enums.EBOOL.TRUE;
+        }
+
+        return Enums.EBOOL.FALSE;
+
+        string? SerializeArgs()
+        {
+            if (eventData is InvalidRTTIEventArgs invalidRtti)
+            {
+                var wrapper = new InvalidRTTIEventArgsWrapper(invalidRtti.PropertyName, RedReflection.GetRedTypeFromCSType(invalidRtti.ExpectedType), new CVariant { Value = invalidRtti.Value });
+                return RedJsonSerializer.Serialize(wrapper);
+            }
+
+            if (eventData is InvalidEnumValueEventArgs invalidEnum)
+            {
+                var wrapper = new InvalidEnumValueEventArgsWrapper(RedReflection.GetEnumRedName(invalidEnum.EnumType), invalidEnum.StringValue);
+                return RedJsonSerializer.Serialize(wrapper);
+            }
+
+            return null;
+        }
+
+        bool DeserializeArgs(string json)
+        {
+            if (eventData is InvalidRTTIEventArgs invalidRtti)
+            {
+                var wrapper = RedJsonSerializer.Deserialize<InvalidRTTIEventArgsWrapper>(json);
+                if (wrapper != null)
+                {
+                    invalidRtti.Value = wrapper.Value.Value;
+                    return true;
+                }
+            }
+
+            if (eventData is InvalidEnumValueEventArgs invalidEnum)
+            {
+                var wrapper = RedJsonSerializer.Deserialize<InvalidEnumValueEventArgsWrapper>(json);
+                if (wrapper != null && Enum.TryParse(invalidEnum.EnumType, wrapper.StringValue, out var value))
+                {
+                    invalidEnum.Value = (Enum?)value;
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     private void MergeSettings(AbstractGlobalArgs oldSettings, AbstractGlobalArgs newSettings)
@@ -231,11 +363,11 @@ public partial class AppScriptService
         }
     }
 
-    private Dictionary<string, object> HookExecute(string scriptFilePath, string function, Func<dynamic, dynamic?> action)
+    private Dictionary<string, object> HookExecute(ScriptFile scriptFile, string function, Func<dynamic, dynamic?> action)
     {
         var engine = GetScriptEngine(DefaultHostObject);
 
-        var code = File.ReadAllText(scriptFilePath);
+        var code = scriptFile.GetContent();
 
         var result = new Dictionary<string, object>
         {
@@ -263,11 +395,15 @@ public partial class AppScriptService
         }
         catch (ScriptEngineException ex1)
         {
-            _loggerService.Error($"{ex1.ErrorDetails}\r\nin {scriptFilePath}");
+            _loggerService.Error($"{ex1.ErrorDetails}\r\nin {scriptFile.Path}");
         }
         catch (Exception ex2)
         {
             _loggerService.Error(ex2);
+        }
+        finally
+        {
+            engine.Dispose();
         }
 
         return result;

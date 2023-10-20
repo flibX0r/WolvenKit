@@ -40,6 +40,7 @@ namespace WolvenKit.FunctionalTests
                         .AddScoped<IProgressService<double>, ProgressService<double>>()
                         .AddSingleton<IHashService, HashService>()
 
+                        .AddScoped<IHookService, HookService>()
                         .AddScoped<Red4ParserService>()
                         .AddScoped<MeshTools>()
                         .AddSingleton<IArchiveManager, ArchiveManager>()
@@ -123,8 +124,8 @@ namespace WolvenKit.FunctionalTests
             //var hashService = _host.Services.GetRequiredService<IHashService>();
             s_bm = _host.Services.GetRequiredService<IArchiveManager>();
 
-            var archivedir = new DirectoryInfo(Path.Combine(gameDirectory.FullName, "archive", "pc", "content"));
-            s_bm.LoadFromFolder(archivedir);
+            var exePath = new FileInfo(Path.Combine(gameDirectory.FullName, "bin", "x64", "Cyberpunk2077.exe"));
+            s_bm.LoadGameArchives(exePath, false);
             s_groupedFiles = s_bm.GetGroupedFiles();
 
             var keyes = s_groupedFiles.Keys.ToList();

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
+using WolvenKit.App.Models.ProjectManagement.Project;
 using WolvenKit.Common;
 using WolvenKit.Common.FNV1A;
 using WolvenKit.Common.Services;
@@ -19,7 +20,10 @@ public class FileSystemArchive : ICyberGameArchive
     public string ArchiveRelativePath { get; set; }
     public Dictionary<ulong, IGameFile> Files { get; set; } = new();
     public string Name { get; }
+    public EArchiveSource Source => EArchiveSource.Project;
     public EArchiveType TypeName { get; set; }
+    public Cp77Project Project { get; }
+
     public bool CanUncook(ulong hash) => throw new System.NotImplementedException();
 
     public void CopyFileToStream(Stream stream, ulong hash, bool decompressBuffers)
@@ -44,11 +48,15 @@ public class FileSystemArchive : ICyberGameArchive
         await fs.CopyToAsync(stream);
     }
 
-    public FileSystemArchive(string modName, string modDirectory, IHashService hashService)
+    public FileSystemArchive(Cp77Project project, IHashService hashService)
     {
+        Project = project;
+
         ArchiveAbsolutePath = $"<virtual FileSystemArchive>";
         ArchiveRelativePath = $"<virtual FileSystemArchive>";
-        Name = $"<{modName}>";
+        Name = $"<{Project.Name}>";
+
+        var modDirectory = Project.ModDirectory;
 
         if (string.IsNullOrEmpty(modDirectory) || !Directory.Exists(modDirectory))
         {

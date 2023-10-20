@@ -72,6 +72,15 @@ namespace WolvenKit.Modkit.RED4
             };
         }
 
+        private void EnsureFolder(string path)
+        {
+            var directoryName = Path.GetDirectoryName(path);
+            if (directoryName?.Length > 0)
+            {
+                Directory.CreateDirectory(directoryName);
+            }
+        }
+
         private bool ImportFbx(RedRelativePath rawRelative, DirectoryInfo outDir, CommonImportArgs commonImportArgs)
         {
             _loggerService.Warning($"Use WolvenKit or REDmod to import fbx.");
@@ -131,6 +140,7 @@ namespace WolvenKit.Modkit.RED4
                 var outpath = new RedRelativePath(rawRelative)
                     .ChangeBaseDir(outDir)
                     .ChangeExtension("");
+                EnsureFolder(outpath.FullPath);
                 using var fs = new FileStream(outpath.FullPath, FileMode.Create, FileAccess.ReadWrite);
                 using var writer = new CR2WWriter(fs) { LoggerService = _loggerService };
                 writer.WriteFile(red);
@@ -306,19 +316,11 @@ namespace WolvenKit.Modkit.RED4
             red.RootChunk = font;
 
             // write to file
-            var redpath = new RedRelativePath(rawRelative)
+            var outpath = new RedRelativePath(rawRelative)
                 .ChangeBaseDir(outDir)
                 .ChangeExtension(ERedExtension.fnt.ToString());
-            if (!File.Exists(redpath.FullPath))
-            {
-                var dir = redpath.ToFileInfo().Directory;
-                if (dir is not null)
-                {
-                    Directory.CreateDirectory(dir.FullName);
-                }
-            }
-
-            using var fs = new FileStream(redpath.FullPath, FileMode.Create, FileAccess.Write);
+            EnsureFolder(outpath.FullPath);
+            using var fs = new FileStream(outpath.FullPath, FileMode.Create, FileAccess.Write);
             using var writer = new CR2WWriter(fs) { LoggerService = _loggerService };
             writer.WriteFile(red);
 
@@ -372,6 +374,20 @@ namespace WolvenKit.Modkit.RED4
                 return false;
             }
 
+            if (image.Metadata.Width % 2 != 0 || image.Metadata.Height % 2 != 0)
+            {
+                if (args.Compression != ETextureCompression.TCM_None)
+                {
+                    _loggerService.Error("Image dimension (width and/or height) is an odd number. To import regardless, set Compression to TCM_None at own risk.");
+                    return false;
+                }
+
+                if (args.TextureGroup != GpuWrapApieTextureGroup.TEXG_Generic_Data)
+                {
+                    _loggerService.Warning("Image dimension (width and/or height) is an odd number. Texture might not work as expected.");
+                }
+            }
+
             // create resource
             var bitmap = image.SaveToXBM(args);
 
@@ -380,13 +396,8 @@ namespace WolvenKit.Modkit.RED4
                 .ChangeExtension(ERedExtension.xbm.ToString());
             if (!File.Exists(outpath.FullPath))
             {
-                var dir = outpath.ToFileInfo().Directory;
-                if (dir is not null)
-                {
-                    Directory.CreateDirectory(dir.FullName);
-                }
+                EnsureFolder(outpath.FullPath);
             }
-
             using var fs = new FileStream(outpath.FullPath, FileMode.Create, FileAccess.ReadWrite);
             using var writer = new CR2WWriter(fs) { LoggerService = _loggerService };
             writer.WriteFile(new CR2WFile { RootChunk = bitmap });
@@ -437,17 +448,10 @@ namespace WolvenKit.Modkit.RED4
                     var name = rawRelative.NameWithoutExtension.ToLower() + ".mesh";
                     var rr = new RedRelativePath(rawRelative);
                     rr.ChangeBaseDir(outDir);
-                    var path = Path.GetDirectoryName(rr.FullName);
-                    if (path is null)
-                    {
-                        throw new DirectoryNotFoundException();
-                    }
-                    if (!Directory.Exists(path))
-                    {
-                        Directory.CreateDirectory(path);
-                    }
-
-                    using var fs = new FileStream(path + @"\" + name, FileMode.Create);
+                    var path = Path.GetDirectoryName(rr.FullName) ?? throw new DirectoryNotFoundException();
+                    var outpath = Path.Combine(path, name);
+                    EnsureFolder(outpath);
+                    using var fs = new FileStream(outpath, FileMode.Create);
                     file.Extract(fs);
 
                     redfile = FindRedFile(rr, outDir, internalExt);

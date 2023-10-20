@@ -104,7 +104,7 @@ public partial class RDTTextureViewModel : RedDocumentTabViewModel
     [RelayCommand]
     private async Task ReplaceTexture()
     {
-        if (Parent.Cr2wFile.RootChunk is not CBitmapTexture bitmap)
+        if (_data is not CBitmapTexture bitmap)
         {
             return;
         }
@@ -121,6 +121,20 @@ public partial class RDTTextureViewModel : RedDocumentTabViewModel
             {
                 _loggerService.Error($"\"{dlg.FileName}\" could not be loaded!");
                 return;
+            }
+
+            if (image.Metadata.Width % 2 != 0 || image.Metadata.Height % 2 != 0)
+            {
+                if (bitmap.Setup.Compression != ETextureCompression.TCM_None)
+                {
+                    _loggerService.Error("Image dimension (width and/or height) is an odd number. To import regardless, set Compression to TCM_None at own risk.");
+                    return;
+                }
+
+                if (bitmap.Setup.Group != GpuWrapApieTextureGroup.TEXG_Generic_Data)
+                {
+                    _loggerService.Warning("Image dimension (width and/or height) is an odd number. Texture might not work as expected.");
+                }
             }
 
             var xbmImportArgs = new XbmImportArgs
@@ -141,7 +155,30 @@ public partial class RDTTextureViewModel : RedDocumentTabViewModel
             var newxbm = image.SaveToXBM(xbmImportArgs);
 
             // set properties in file
-            Parent.Cr2wFile.RootChunk = newxbm;
+            var replaced = false;
+            if (ReferenceEquals(Parent.Cr2wFile.RootChunk, _data))
+            {
+                Parent.Cr2wFile.RootChunk = newxbm;
+                replaced = true;
+            }
+            else
+            {
+                foreach (var embeddedFile in Parent.Cr2wFile.EmbeddedFiles)
+                {
+                    if (ReferenceEquals(embeddedFile.Content, _data))
+                    {
+                        embeddedFile.Content = newxbm;
+                        replaced = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!replaced)
+            {
+                return;
+            }
+            
             // save file
             await Parent.Save(null);
 

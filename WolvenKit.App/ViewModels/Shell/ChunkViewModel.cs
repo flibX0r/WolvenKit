@@ -25,6 +25,7 @@ using WolvenKit.App.Models.Nodify;
 using WolvenKit.App.Services;
 using WolvenKit.App.ViewModels.Dialogs;
 using WolvenKit.App.ViewModels.Documents;
+using WolvenKit.App.ViewModels.Tools;
 using WolvenKit.Common;
 using WolvenKit.Common.Services;
 using WolvenKit.Core.Extensions;
@@ -49,6 +50,7 @@ namespace WolvenKit.App.ViewModels.Shell;
 public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemModel, INode<ReferenceSocket>
 {
     private readonly IChunkViewmodelFactory _chunkViewmodelFactory;
+    private readonly ChunkViewModelTools _chunkViewModelTools = new ChunkViewModelTools();
     private readonly IDocumentTabViewmodelFactory _tabViewmodelFactory;
     private readonly ILoggerService _loggerService;
     private readonly ISettingsManager _settingsManager;
@@ -93,7 +95,9 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
         ITweakDBService tweakDbService,
         ILocKeyService locKeyService,
         Red4ParserService parserService,
-        ChunkViewModel? parent = null, bool isReadOnly = false)
+        ChunkViewModel? parent = null,
+        bool isReadOnly = false
+    )
     {
         _chunkViewmodelFactory = chunkViewmodelFactory;
         _tabViewmodelFactory = tabViewmodelFactory;
@@ -140,12 +144,13 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
         IArchiveManager archiveManager,
         ITweakDBService tweakDbService,
         ILocKeyService locKeyService,
-        Red4ParserService parserService, 
+        Red4ParserService parserService,
         bool isReadOnly = false
         ) 
         : this(data, nameof(RDTDataViewModel), appViewModel,
-              chunkViewmodelFactory, tabViewmodelFactory, hashService, loggerService, projectManager, 
-              gameController, settingsManager, archiveManager, tweakDbService, locKeyService, parserService, null, isReadOnly
+            chunkViewmodelFactory, tabViewmodelFactory, hashService, loggerService, projectManager,
+            gameController, settingsManager, archiveManager, tweakDbService, locKeyService, parserService, null,
+            isReadOnly
               )
     {
         _tab = tab;
@@ -173,7 +178,7 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
         IArchiveManager archiveManager,
         ITweakDBService tweakDbService,
         ILocKeyService locKeyService,
-        Red4ParserService parserService, 
+        Red4ParserService parserService,
         bool isReadOnly = false
         ) 
         : this(export, nameof(ReferenceSocket), appViewModel,
@@ -185,17 +190,26 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
         socket.Node = this;
         RelativePath = socket.File;
     }
-
+    
     partial void OnIsSelectedChanged(bool value)
     {
         if (IsSelected && !_propertiesLoaded)
-        CalculateProperties();
+        {
+            CalculateProperties();
+        }
     }
 
     partial void OnIsExpandedChanged(bool value)
     {
         if (IsExpanded && !_propertiesLoaded)
+        {
             CalculateProperties();
+        }
+
+        if (IsShiftBeingHeld)
+        {
+            _chunkViewModelTools.SetChildExpansionStates(this, IsExpanded);
+        }
     }
 
     partial void OnDataChanged(IRedType value)
@@ -298,6 +312,9 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
     public ObservableCollectionExtended<ChunkViewModel> TVProperties => _propertiesLoaded ? Properties : TempList;
 
     public ObservableCollectionExtended<ChunkViewModel> DisplayProperties => MightHaveChildren() ? Properties : SelfList;
+
+    // Fix annoying "Property not found" error spam
+    public bool IsDeletable => true;
 
     [ObservableProperty] private string? _value;
 
@@ -1799,7 +1816,43 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
 
         if (ResolvedData is IRedArray ary)
         {
+            if (Parent is { Name: "compiledData" } && GetRootModel().Data is C2dArray csv)
+            {
+                var index = 0;
+                for (var i = 0; i < csv.CompiledHeaders.Count; i++)
+                {
+                    if (((string)csv.CompiledHeaders[i]).Contains("name", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        index = i;
+                        break;
+                    }
+                }
+
+                Descriptor = $"{ary[index]}";
+                if (Descriptor != "")
+                {
+                    return;
+                }
+            }
+
             Descriptor = $"[{ary.Count}]";
+        }
+        else if (ResolvedData is appearanceAppearancePart)
+        {
+            Descriptor = ((appearanceAppearancePart)ResolvedData).Resource.DepotPath.ToString() ?? "";
+            if (Descriptor != "")
+            {
+                return;
+            }
+        }
+        else if (ResolvedData is animAnimSetEntry)
+        {
+            var animation = ((animAnimSetEntry)ResolvedData).Animation?.GetValue();
+            Descriptor = animation?.GetProperty("Name")?.ToString() ?? "";
+            if (Descriptor != "")
+            {
+                return;
+            }
         }
         else if (ResolvedData is IRedBufferPointer rbp && rbp.GetValue().Data is RedPackage pkg)
         {
@@ -1851,6 +1904,7 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
         {
             Descriptor = $"{q.I}, {q.J}, {q.K}, {q.R}";
         }
+
         if (ResolvedData is CMaterialInstance && Parent is { Data: IRedArray arr } && GetRootModel().Data is CMesh mesh)
         {
             for (var i = 0; i < arr.Count; i++)
@@ -1860,7 +1914,8 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
                     continue;
                 }
 
-                var entry = mesh.MaterialEntries.FirstOrDefault(x => x is not null && x.IsLocalInstance && x.Index == i);
+                var entry = mesh.MaterialEntries.FirstOrDefault(x =>
+                    x is not null && x.IsLocalInstance && x.Index == i);
                 if (entry != null)
                 {
                     Descriptor = entry.Name;
@@ -1875,6 +1930,7 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
             {
                 desc += $" {localizationPersistenceOnScreenEntry.SecondaryKey}";
             }
+
             Descriptor = desc;
         }
         else if (ResolvedData is not null)
@@ -1896,21 +1952,25 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
         // some common "names" of classes that might be useful to display in the UI
         var propNames = new string[]
         {
-                "name",
-                "partName",
-                "slotName",
-                "hudEntryName",
-                "stateName",
-                "n",
-                "componentName",
-                "parameterName",
-                "debugName",
-                "category",
-                "entryName",
-                "className",
-                "actorName",
-                "sectorHash",
-                "propertyPath"
+            "name", // default property
+            "partName", // ?
+            "slotName", // ?
+            "hudEntryName", // ?
+            "stateName", // ?
+            "characterRecordId", // tweak record children
+            "secondaryKey", // json
+            "femaleVariant", // also json
+            "maleVariant", // also json
+            "n", // ?
+            "componentName", // ?
+            "parameterName", // ?
+            "debugName", // ?
+            "category", // ?
+            "entryName", // ?
+            "className", // ?
+            "actorName", // ?
+            "sectorHash", // sectors
+            "propertyPath" // ?
         };
         if (ResolvedData is RedBaseClass irc)
         {
@@ -1940,6 +2000,7 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
                         {
                             Descriptor = val.ToString().NotNull();
                         }
+
                         return;
                     }
                 }
@@ -2244,10 +2305,6 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
         {
             return;
         }
-        if (item.Data == null)
-        {
-            return;
-        }
 
         var oldParent = item.Parent;
 
@@ -2290,7 +2347,7 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
             int oldIndex = -1, i = 0;
             foreach (var thing in sourceList)
             {
-                if (item.Data is not null && thing.GetHashCode() == item.Data.GetHashCode())
+                if (thing.GetHashCode() == item.Data.GetHashCode())
                 {
                     oldIndex = i;
                     break;
@@ -2305,6 +2362,7 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
                 {
                     index--;
                 }
+
                 InsertChild(index, item.Data);
                 Tab?.Parent.SetIsDirty(true);
                 //RecalculateProperties();
@@ -2558,6 +2616,7 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
     }
 
     public static bool IsControlBeingHeld => Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+    public static bool IsShiftBeingHeld => Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
 
     // node stuff
 
@@ -3460,7 +3519,7 @@ public partial class ChunkViewModel : ObservableObject, ISelectableTreeViewItemM
         {
             var am = _archiveManager;
             var sm = _settingsManager;
-            am.LoadModsArchives(new FileInfo(sm.CP77ExecutablePath.NotNull()));
+            am.LoadModsArchives(new FileInfo(sm.CP77ExecutablePath.NotNull()), sm.AnalyzeModArchives);
             var af = am.GetGroupedFiles();
 
             var tempbool = am.IsModBrowserActive;

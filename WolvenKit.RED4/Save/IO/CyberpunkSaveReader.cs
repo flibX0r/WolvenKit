@@ -58,7 +58,7 @@ public class CyberpunkSaveReader : IDisposable, IErrorHandler
             return result;
         }
 
-        if (((CyberpunkSaveHeaderStruct)info).gameVersion < (ulong)Enums.gameGameVersion.CP77_Patch_1_6)
+        if (((CyberpunkSaveHeaderStruct)info).gameVersion < (ulong)Enums.gameGameVersion.CP77_Patch_2_0)
         {
             file = null;
             return EFileReadErrorCodes.UnsupportedVersion;
@@ -147,6 +147,12 @@ public class CyberpunkSaveReader : IDisposable, IErrorHandler
                     }
 
                     parser.Read(reader, node);
+
+                    var readSize = reader.BaseStream.Position - node.Offset;
+                    if (readSize != node.Size)
+                    {
+                        throw new Exception($"Unknown data in {node.Name}");
+                    }
                 }
             }
         }

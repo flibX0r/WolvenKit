@@ -50,7 +50,9 @@ public partial class SettingsManager : ObservableObject, ISettingsManager
             nameof(ShowNodeRefAsHex),
             nameof(ShowTweakDBIDAsHex),
             nameof(ShowReferenceGraph),
-            nameof(GameLanguage)
+            nameof(GameLanguage),
+            nameof(AnalyzeModArchives),
+            nameof(ExtraModDirPath)
             )
           .Subscribe(_ =>
           {
@@ -226,6 +228,14 @@ public partial class SettingsManager : ObservableObject, ISettingsManager
     [ObservableProperty]
     [property: Browsable(false)]
     private Dictionary<string, bool>? _scriptStatus;
+
+    [Display(Name = "Analyze mods", Description = "Check mod archives for file names and invalid files", GroupName = "Cyberpunk")] 
+    [ObservableProperty]
+    private bool _analyzeModArchives;
+
+    [Display(Name = "Additional Mod directory", Description = "Path to an optional directory containing mod archives", GroupName = "Cyberpunk")]
+    [ObservableProperty]
+    private string? _extraModDirPath;
 
     #endregion properties
 

@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using WolvenKit.Core.Extensions;
+using WolvenKit.Core.Interfaces;
 using WolvenKit.RED4.Archive.Buffer;
 using WolvenKit.RED4.IO;
 using WolvenKit.RED4.Types;
@@ -11,6 +12,8 @@ namespace WolvenKit.RED4.Archive.IO;
 
 public partial class RedPackageReader : Red4Reader
 {
+    public ILoggerService? LoggerService { get; set; }
+
     public RedPackageSettings Settings = new();
 
     public RedPackageReader(Stream input) : this(new BinaryReader(input, Encoding.UTF8, false))
@@ -30,37 +33,64 @@ public partial class RedPackageReader : Red4Reader
         //var unk = _reader.ReadUInt16();
         var fields = BaseStream.ReadStructs<RedPackageFieldHeader>(fieldCount);
 
+        var compiledPropertyData = cls as IRedCompiledPropertyData;
+
         foreach (var f in fields)
         {
             var varName = GetStringValue(f.nameID);
             var typeName = GetStringValue(f.typeID);
             var (fieldType, flags) = RedReflection.GetCSTypeFromRedType(typeName!);
             var redTypeInfos = RedReflection.GetRedTypeInfos(typeName!);
-            CheckRedTypeInfos(ref redTypeInfos);
+
+            var propName = $"{RedReflection.GetRedTypeFromCSType(cls.GetType())}.{varName}";
 
             var prop = typeInfo.GetPropertyInfoByRedName(varName!);
-            if (prop == null)
+            var (hasError, errorRedName) = CheckRedTypeInfos(ref redTypeInfos);
+
+            if (hasError)
             {
-                prop = cls.AddDynamicProperty(varName!, fieldType);
+                if (prop == null)
+                {
+                    LoggerService?.Warning($"Type \"{errorRedName}\" is not known! Non-RTTI property \"{propName}\" will be ignored");
+                    continue;
+                }
+
+                throw new Exception($"Type \"{errorRedName}\" is not known! RTTI property \"{propName}\"");
             }
+
+            prop ??= cls.AddDynamicProperty(varName!, fieldType);
 
             IRedType? value;
 
             BaseStream.Position = baseOff + f.offset;
             if (prop.IsDynamic)
             {
-                value = Read(redTypeInfos, 0);
+                if (compiledPropertyData != null && compiledPropertyData.IsCustomReadNeeded(header))
+                {
+                    value = compiledPropertyData.CustomRead(this, 0, varName);
+                }
+                else
+                {
+                    value = Read(redTypeInfos, 0);
+                }
+
                 cls.SetProperty(varName!, value);
             }
             else
             {
                 ArgumentNullException.ThrowIfNull(prop.RedName);
 
-                value = Read(redTypeInfos, 0);
+                if (compiledPropertyData != null && compiledPropertyData.IsCustomReadNeeded(header))
+                {
+                    value = compiledPropertyData.CustomRead(this, 0, varName);
+                }
+                else
+                {
+                    value = Read(redTypeInfos, 0);
+                }
 
                 if (fieldType != prop.Type)
                 {
-                    var propName = $"{RedReflection.GetRedTypeFromCSType(cls.GetType())}.{varName}";
                     var args = new InvalidRTTIEventArgs(propName, prop.Type, fieldType, value);
                     if (!HandleParsingError(args))
                     {
@@ -142,6 +172,7 @@ public partial class RedPackageReader : Red4Reader
             if (reader is RedPackageReader pReader)
             {
                 pReader.Settings = Settings;
+                pReader.LoggerService = LoggerService;
             }
 
             reader.ReadBuffer(buffer);

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using WolvenKit.Core.Compression;
 using WolvenKit.Core.Extensions;
 using WolvenKit.RED4.IO;
 using WolvenKit.RED4.Types.Exceptions;
@@ -45,6 +46,14 @@ public partial class animAnimationBufferCompressed //: IRedAppendix
     {
         get => GetPropertyValue<CArray<animKey>>();
         set => SetPropertyValue<CArray<animKey>>(value);
+    }
+
+    [RED("trackKeys")]
+    [REDProperty(IsIgnored = true)]
+    public CArray<animKeyFloat> TrackKeys
+    {
+        get => GetPropertyValue<CArray<animKeyFloat>>();
+        set => SetPropertyValue<CArray<animKeyFloat>>(value);
     }
 
     [RED("constTrackKeys")]
@@ -139,7 +148,13 @@ public partial class animAnimationBufferCompressed //: IRedAppendix
         MemoryStream defferedBuffer = null;
         if (InplaceCompressedBuffer != null)
         {
-            defferedBuffer = new MemoryStream(InplaceCompressedBuffer.Buffer.GetBytes());
+            var tmpBytes = InplaceCompressedBuffer.Buffer.GetBytes();
+            if (Oodle.IsCompressed(tmpBytes))
+            {
+                Oodle.DecompressBuffer(tmpBytes, out var raw);
+                tmpBytes = raw;
+            }
+            defferedBuffer = new MemoryStream(tmpBytes);
         }
         else if (DefferedBuffer != null)
         {
@@ -203,6 +218,20 @@ public partial class animAnimationBufferCompressed //: IRedAppendix
             var z = br.ReadSingle();
 
             ConstAnimKeys.Add(ToAnimKey(timeNormalized, boneIdx, component, x, y, z, wSign));
+        }
+
+        TrackKeys = new();
+        for (uint i = 0; i < NumTrackKeys; i++)
+        {
+            var idx = br.ReadUInt16();
+            var time = br.ReadUInt16() / (float)ushort.MaxValue; //is it time or some garbage idk
+            float value = br.ReadSingle();
+            TrackKeys.Add(new animKeyFloat()
+            {
+                Idx = idx,
+                Time = time,
+                Value = value,
+            });
         }
 
         ConstTrackKeys = new();
@@ -273,6 +302,13 @@ public partial class animAnimationBufferCompressed //: IRedAppendix
             bw.Write((float)x);
             bw.Write((float)y);
             bw.Write((float)z);
+        }
+
+        for (int i = 0; i < TrackKeys.Count; i++)
+        {
+            bw.Write(TrackKeys[i].Idx);
+            bw.Write((ushort)(TrackKeys[i].Time * ushort.MaxValue));
+            bw.Write((float)TrackKeys[i].Value);
         }
 
         for (int i = 0; i < ConstTrackKeys.Count; i++)
