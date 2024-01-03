@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WolvenKit.App.Models.ProjectManagement;
 using WolvenKit.App.Models.ProjectManagement.Project;
+using WolvenKit.Common;
 using WolvenKit.Common.Services;
 using WolvenKit.Core.Interfaces;
 
@@ -21,18 +22,21 @@ public partial class ProjectManager : ObservableObject, IProjectManager
     private readonly INotificationService _notificationService;
     private readonly ILoggerService _loggerService;
     private readonly IHashService _hashService;
+    private readonly IArchiveManager _archiveManager;
 
     public ProjectManager(
         IRecentlyUsedItemsService recentlyUsedItemsService,
         INotificationService notificationService,
         ILoggerService loggerService,
-        IHashService hashService
+        IHashService hashService,
+        IArchiveManager archiveManager
     )
     {
         _recentlyUsedItemsService = recentlyUsedItemsService;
         _notificationService = notificationService;
         _loggerService = loggerService;
         _hashService = hashService;
+        _archiveManager = archiveManager;
     }
 
     #region properties
@@ -89,11 +93,18 @@ public partial class ProjectManager : ObservableObject, IProjectManager
                 else
                 {
                     ActiveProject = x.Result;
+                    _archiveManager.ProjectArchive = x.Result.AsArchive();
                     IsProjectLoaded = true;
 
-                    if (_recentlyUsedItemsService.Items.Items.All(item => item.Name != location))
+                    var recentItem = _recentlyUsedItemsService.Items.Items.FirstOrDefault(item => item.Name == location);
+                    if (recentItem == null)
                     {
-                        _recentlyUsedItemsService.AddItem(new RecentlyUsedItemModel(location, DateTime.Now, DateTime.Now));
+                        recentItem = new RecentlyUsedItemModel(location, DateTime.Now, DateTime.Now);
+                        _recentlyUsedItemsService.AddItem(recentItem);
+                    }
+                    else
+                    {
+                        recentItem.LastOpened = DateTime.Now;
                     }
                 }
             }
@@ -150,10 +161,13 @@ public partial class ProjectManager : ObservableObject, IProjectManager
                 return null;
             }
 
-            Cp77Project result = new(path, obj.Name, _hashService)
+            obj.ModName ??= obj.Name;
+
+            Cp77Project project = new(path, obj.Name, obj.ModName, _hashService)
             {
                 Author = obj.Author,
                 Email = obj.Email,
+                Description = obj.Description,
                 Version = obj.Version,
             };
 
@@ -161,7 +175,7 @@ public partial class ProjectManager : ObservableObject, IProjectManager
             {
                 hashService.ClearProjectHashes();
 
-                var projectHashesFile = Path.Combine(result.ProjectDirectory, "project_hashes.txt");
+                var projectHashesFile = Path.Combine(project.ProjectDirectory, "project_hashes.txt");
                 if (File.Exists(projectHashesFile))
                 {
                     var paths = await File.ReadAllLinesAsync(projectHashesFile);
@@ -174,17 +188,40 @@ public partial class ProjectManager : ObservableObject, IProjectManager
 
 
             // fix legacy folders
-            MoveLegacyFolder(new DirectoryInfo(Path.Combine(result.FileDirectory, "tweaks")), result);
-            MoveLegacyFolder(new DirectoryInfo(Path.Combine(result.FileDirectory, "scripts")), result);
-            MoveLegacyFolder(new DirectoryInfo(Path.Combine(result.FileDirectory, "archiveXL")), result);
+            MoveLegacyFolder(new DirectoryInfo(Path.Combine(project.FileDirectory, "tweaks")), project);
+            MoveLegacyFolder(new DirectoryInfo(Path.Combine(project.FileDirectory, "scripts")), project);
+            MoveLegacyFolder(new DirectoryInfo(Path.Combine(project.FileDirectory, "archiveXL")), project);
 
-            return result;
+            // fix legacy yaml tweaks
+            MoveLegacyYamlTweaks(project);
+
+            return project;
         }
         catch (Exception e)
         {
             _loggerService.Error($"Failed to load project.");
             _loggerService.Error(e);
             return null;
+        }
+    }
+
+    private void MoveLegacyYamlTweaks(Cp77Project project)
+    {
+        var yamlFiles = Directory.GetFiles(project.ResourcesDirectory, "*.yaml", SearchOption.TopDirectoryOnly);
+        foreach (var file in yamlFiles)
+        {
+            var fileName = Path.GetFileName(file);
+            var destPath = Path.Combine(project.ResourceTweakDirectory, fileName);
+            try
+            {
+                File.Move(file, destPath);
+                _loggerService.Info($"Yaml tweak file was moved to the new location: {fileName}");
+            }
+            catch (Exception e)
+            {
+                _loggerService.Error($"Could not move file. Error: {e}");
+            }
+            
         }
     }
 

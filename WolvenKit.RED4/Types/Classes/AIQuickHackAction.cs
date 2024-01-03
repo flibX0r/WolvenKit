@@ -4,7 +4,7 @@ namespace WolvenKit.RED4.Types
 {
 	public partial class AIQuickHackAction : PuppetAction
 	{
-		[Ordinal(38)] 
+		[Ordinal(39)] 
 		[RED("target")] 
 		public CWeakHandle<gameObject> Target
 		{
@@ -12,7 +12,7 @@ namespace WolvenKit.RED4.Types
 			set => SetPropertyValue<CWeakHandle<gameObject>>(value);
 		}
 
-		[Ordinal(39)] 
+		[Ordinal(40)] 
 		[RED("scaleUploadTime")] 
 		public CBool ScaleUploadTime
 		{
@@ -20,9 +20,18 @@ namespace WolvenKit.RED4.Types
 			set => SetPropertyValue<CBool>(value);
 		}
 
+		[Ordinal(41)] 
+		[RED("HUDData")] 
+		public HUDProgressBarData HUDData
+		{
+			get => GetPropertyValue<HUDProgressBarData>();
+			set => SetPropertyValue<HUDProgressBarData>(value);
+		}
+
 		public AIQuickHackAction()
 		{
 			ScaleUploadTime = true;
+			HUDData = new HUDProgressBarData { BottomText = "LocKey#22169", CompletedText = "LocKey#15455", FailedText = "LocKey#15353" };
 
 			PostConstruct();
 		}

@@ -52,7 +52,10 @@ public partial class SettingsManager : ObservableObject, ISettingsManager
             nameof(ShowReferenceGraph),
             nameof(GameLanguage),
             nameof(AnalyzeModArchives),
-            nameof(ExtraModDirPath)
+            nameof(ExtraModDirPath),
+            nameof(LastUsedProjectPath),
+            nameof(PinnedOrder),
+            nameof(RecentOrder)
             )
           .Subscribe(_ =>
           {
@@ -133,7 +136,9 @@ public partial class SettingsManager : ObservableObject, ISettingsManager
 
     [Display(Name = "Settings Version", GroupName = "General")]
     [ObservableProperty]
+#pragma warning disable CS0657 // Not a valid attribute location for this declaration
     [property: Browsable(false)]
+#pragma warning restore CS0657 // Not a valid attribute location for this declaration
     private int _settingsVersion;
 
     [Display(Name = "Do not check for updates", GroupName = "General")]
@@ -170,11 +175,15 @@ public partial class SettingsManager : ObservableObject, ISettingsManager
     private bool _showFilePreview = true;
 
     [ObservableProperty]
+#pragma warning disable CS0657 // Not a valid attribute location for this declaration
     [property: Browsable(false)]
+#pragma warning restore CS0657 // Not a valid attribute location for this declaration
     private string? _reddbHash;
 
     [ObservableProperty]
+#pragma warning disable CS0657 // Not a valid attribute location for this declaration
     [property: Browsable(false)]
+#pragma warning restore CS0657 // Not a valid attribute location for this declaration
     private string? _installerHash;
 
     [Display(Name = "Depot Path", GroupName = "Cyberpunk")]
@@ -222,11 +231,15 @@ public partial class SettingsManager : ObservableObject, ISettingsManager
     private EGameLanguage _gameLanguage;
 
     [ObservableProperty]
+#pragma warning disable CS0657 // Not a valid attribute location for this declaration
     [property: Browsable(false)]
+#pragma warning restore CS0657 // Not a valid attribute location for this declaration
     private Dictionary<string, LaunchProfile>? _launchProfiles;
 
     [ObservableProperty]
+#pragma warning disable CS0657 // Not a valid attribute location for this declaration
     [property: Browsable(false)]
+#pragma warning restore CS0657 // Not a valid attribute location for this declaration
     private Dictionary<string, bool>? _scriptStatus;
 
     [Display(Name = "Analyze mods", Description = "Check mod archives for file names and invalid files", GroupName = "Cyberpunk")] 
@@ -236,6 +249,24 @@ public partial class SettingsManager : ObservableObject, ISettingsManager
     [Display(Name = "Additional Mod directory", Description = "Path to an optional directory containing mod archives", GroupName = "Cyberpunk")]
     [ObservableProperty]
     private string? _extraModDirPath;
+
+    [ObservableProperty]
+#pragma warning disable CS0657 // Not a valid attribute location for this declaration
+    [property: Browsable(false)]
+#pragma warning restore CS0657 // Not a valid attribute location for this declaration
+    private string? _lastUsedProjectPath;
+
+    [ObservableProperty]
+#pragma warning disable CS0657 // Not a valid attribute location for this declaration
+    [property: Browsable(false)]
+#pragma warning restore CS0657 // Not a valid attribute location for this declaration
+    private int _pinnedOrder;
+
+    [ObservableProperty]
+#pragma warning disable CS0657 // Not a valid attribute location for this declaration
+    [property: Browsable(false)]
+#pragma warning restore CS0657 // Not a valid attribute location for this declaration
+    private int _recentOrder;
 
     #endregion properties
 
@@ -264,15 +295,9 @@ public partial class SettingsManager : ObservableObject, ISettingsManager
 
     public string GetRED4GameExecutablePath() => CP77ExecutablePath.NotNull();
 
-    public string GetRED4GameLaunchCommand()
-    {
-        return string.IsNullOrEmpty(CP77LaunchCommand) ? "" : CP77LaunchCommand.NotNull();
-    }
+    public string GetRED4GameLaunchCommand() => CP77LaunchCommand ?? "";
 
-    public string GetRED4GameLaunchOptions()
-    {
-        return string.IsNullOrEmpty(CP77LaunchOptions) ? "" : CP77LaunchOptions.NotNull();
-    }
+    public string GetRED4GameLaunchOptions() => CP77LaunchOptions ?? "";
 
     public string GetRED4GameLegacyModDir()
     {

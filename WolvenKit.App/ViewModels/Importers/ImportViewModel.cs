@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
@@ -260,6 +261,7 @@ public partial class ImportViewModel : AbstractImportViewModel
         return false;
     }
 
+
     protected override async Task LoadFilesAsync()
     {
         if (_projectManager.ActiveProject is null)
@@ -267,7 +269,8 @@ public partial class ImportViewModel : AbstractImportViewModel
             return;
         }
 
-        var files = Directory.GetFiles(_projectManager.ActiveProject.RawDirectory, "*", SearchOption.AllDirectories).Where(CanImport);
+        var files = Directory.GetFiles(_projectManager.ActiveProject.RawDirectory, "*", SearchOption.AllDirectories)
+            .Where(CanImport);
 
         // do not refresh if the files are the same
         if(Enumerable.SequenceEqual( Items.Select(x => x.BaseFile), files))
@@ -291,9 +294,33 @@ public partial class ImportViewModel : AbstractImportViewModel
         _progressService.IsIndeterminate = false;
     }
 
-    
+    // for checking if a dds file is part of a morphtarget
+    [GeneratedRegex("\\d+\\.dds$")]
+    private static partial Regex NumberedDdsFileRegex();
 
-    private static bool CanImport(string x) => Enum.TryParse<ERawFileFormat>(Path.GetExtension(x).TrimStart('.'), out var _);
+    private static bool CanImport(string filePath)
+    {
+        var fileExtension = Path.GetExtension(filePath).TrimStart('.');
+        if (!Enum.TryParse<ERawFileFormat>(fileExtension, out var _))
+        {
+            return false;
+        }
+
+        switch (fileExtension)
+        {
+            // masklist items
+            case "png":
+                var masklistPath = (Path.GetDirectoryName(filePath) ?? "").Replace("_layers", ".masklist");
+                return !File.Exists(masklistPath);
+            // morphtarget texturesF
+            case "dds":
+                var parentDirName = new DirectoryInfo(Path.GetDirectoryName(filePath) ?? string.Empty).Name;
+                var morphtargetFolderName = NumberedDdsFileRegex().Replace(Path.GetFileName(filePath), "textures");
+                return parentDirName != morphtargetFolderName;
+            default:
+                return true;
+        }
+    }
 
     public Task InitCollectionEditor(CallbackArguments args)
     {
@@ -389,4 +416,5 @@ public partial class ImportViewModel : AbstractImportViewModel
             }
         }
     }
+
 }

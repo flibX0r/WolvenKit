@@ -14,7 +14,7 @@ public partial class Red4Reader : IErrorHandler, IDataCollector, IDisposable
 
     protected Red4File _outputFile;
     protected List<CName> _namesList = new();
-    protected List<IRedImport> importsList = new();
+    protected List<IRedImport> _importsList = new();
 
     protected Dictionary<int, List<IRedBaseHandle>> HandleQueue = new();
     protected Dictionary<int, List<IRedBufferPointer>> BufferQueue = new();
@@ -53,7 +53,7 @@ public partial class Red4Reader : IErrorHandler, IDataCollector, IDisposable
         set => BaseStream.Position = value;
     }
 
-    public List<IRedImport> ImportsList { get => importsList; set => importsList = value; }
+    public List<IRedImport> ImportsList { get => _importsList; set => _importsList = value; }
 
     protected CName GetStringValue(ushort index, bool isTypeInfo = true)
     {
@@ -483,10 +483,10 @@ public partial class Red4Reader : IErrorHandler, IDataCollector, IDisposable
         var flags = InternalEnums.EImportFlags.Default;
 
         var index = _reader.ReadUInt16();
-        if (index > 0 && index <= importsList.Count)
+        if (index > 0 && index <= _importsList.Count)
         {
-            depotPath = importsList[index - 1].DepotPath;
-            flags = importsList[index - 1].Flags;
+            depotPath = _importsList[index - 1].DepotPath;
+            flags = _importsList[index - 1].Flags;
         }
 
         var type = RedReflection.GetFullType(redTypeInfos);
@@ -509,10 +509,10 @@ public partial class Red4Reader : IErrorHandler, IDataCollector, IDisposable
         var flags = InternalEnums.EImportFlags.Default;
 
         var index = _reader.ReadUInt16();
-        if (index > 0 && index <= importsList.Count)
+        if (index > 0 && index <= _importsList.Count)
         {
-            depotPath = importsList[index - 1].DepotPath;
-            flags = importsList[index - 1].Flags;
+            depotPath = _importsList[index - 1].DepotPath;
+            flags = _importsList[index - 1].Flags;
         }
 
         var type = RedReflection.GetFullType(redTypeInfos);
@@ -654,6 +654,15 @@ public partial class Red4Reader : IErrorHandler, IDataCollector, IDisposable
                 var args = new UnknownTypeEventArgs(specialRedTypeInfo.RedName);
                 if (!HandleParsingError(args))
                 {
+                    // If not handled yet and parent is Handle/WeakHandle, this must be a class, not an enum
+                    if (i > 0 && (redTypeInfos[i - 1].BaseRedType == BaseRedType.Handle ||
+                                  redTypeInfos[i - 1].BaseRedType == BaseRedType.WeakHandle))
+                    {
+                        redTypeInfos[i].BaseRedType = BaseRedType.Class;
+                        redTypeInfos[i].RedObjectType = typeof(DynamicBaseClass);
+                        continue;
+                    }
+
                     return (true, specialRedTypeInfo.RedName);
                 }
                 redTypeInfos[i] = args.Result;

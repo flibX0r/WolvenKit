@@ -140,7 +140,6 @@ namespace WolvenKit.Common.Model.Arguments
     public class XbmExportArgs : ExportArgs
     {
         private EUncookExtension _uncookExtension = EUncookExtension.png;
-        private bool _flip;
 
         /// <summary>
         ///  Uncook Format for XBM.
@@ -149,19 +148,12 @@ namespace WolvenKit.Common.Model.Arguments
         [Display(Name = "XBM Export Type")]
         [WkitScriptAccess("ImageType")]
         public EUncookExtension UncookExtension { get => _uncookExtension; set => SetProperty(ref _uncookExtension, value); }
-        /// <summary>
-        /// Flip Image argument
-        /// </summary>
-        [Category("Export Settings")]
-        [Display(Name = "Flip Image")]
-        [WkitScriptAccess()]
-        public bool Flip { get => _flip; set => SetProperty(ref _flip, value); }
 
         /// <summary>
         /// String Override to display info in datagrid.
         /// </summary>
         /// <returns>String</returns>
-        public override string ToString() => $"{UncookExtension} | Flip : {Flip}";
+        public override string ToString() => $"{UncookExtension}";
     }
     /// <summary>
     /// ENT Export Arguments
@@ -316,7 +308,7 @@ namespace WolvenKit.Common.Model.Arguments
     /// </summary>
     public class WemExportArgs : ExportArgs
     {
-        private WemExportTypes _wemExportType = WemExportTypes.Mp3;
+        private WemExportTypes _wemExportType = WemExportTypes.Ogg;
 
         /// <summary>
         /// Wem Export type
@@ -380,7 +372,8 @@ namespace WolvenKit.Common.Model.Arguments
     public enum WemExportTypes
     {
         Wav,
-        Mp3
+        Mp3,
+        Ogg
     }
 
     /// <summary>

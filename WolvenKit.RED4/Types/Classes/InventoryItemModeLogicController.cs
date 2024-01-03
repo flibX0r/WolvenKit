@@ -493,22 +493,54 @@ namespace WolvenKit.RED4.Types
 		}
 
 		[Ordinal(62)] 
-		[RED("gridUpdatePending")] 
-		public CBool GridUpdatePending
+		[RED("refreshRequested")] 
+		public CBool RefreshRequested
 		{
 			get => GetPropertyValue<CBool>();
 			set => SetPropertyValue<CBool>(value);
 		}
 
 		[Ordinal(63)] 
-		[RED("nextFrameCheckRequested")] 
-		public CBool NextFrameCheckRequested
+		[RED("currentFilter")] 
+		public CEnum<ItemFilterCategory> CurrentFilter
+		{
+			get => GetPropertyValue<CEnum<ItemFilterCategory>>();
+			set => SetPropertyValue<CEnum<ItemFilterCategory>>(value);
+		}
+
+		[Ordinal(64)] 
+		[RED("viewMode")] 
+		public CEnum<ItemViewModes> ViewMode
+		{
+			get => GetPropertyValue<CEnum<ItemViewModes>>();
+			set => SetPropertyValue<CEnum<ItemViewModes>>(value);
+		}
+
+		[Ordinal(65)] 
+		[RED("currentItems")] 
+		public CArray<CWeakHandle<WrappedInventoryItemData>> CurrentItems
+		{
+			get => GetPropertyValue<CArray<CWeakHandle<WrappedInventoryItemData>>>();
+			set => SetPropertyValue<CArray<CWeakHandle<WrappedInventoryItemData>>>(value);
+		}
+
+		[Ordinal(66)] 
+		[RED("previousSelectedItem")] 
+		public gameItemID PreviousSelectedItem
+		{
+			get => GetPropertyValue<gameItemID>();
+			set => SetPropertyValue<gameItemID>(value);
+		}
+
+		[Ordinal(67)] 
+		[RED("virtualGridInitialized")] 
+		public CBool VirtualGridInitialized
 		{
 			get => GetPropertyValue<CBool>();
 			set => SetPropertyValue<CBool>(value);
 		}
 
-		[Ordinal(64)] 
+		[Ordinal(68)] 
 		[RED("replaceModNotification")] 
 		public CHandle<inkGameNotificationToken> ReplaceModNotification
 		{
@@ -516,7 +548,7 @@ namespace WolvenKit.RED4.Types
 			set => SetPropertyValue<CHandle<inkGameNotificationToken>>(value);
 		}
 
-		[Ordinal(65)] 
+		[Ordinal(69)] 
 		[RED("installModData")] 
 		public CHandle<InstallModConfirmationData> InstallModData
 		{
@@ -524,7 +556,7 @@ namespace WolvenKit.RED4.Types
 			set => SetPropertyValue<CHandle<InstallModConfirmationData>>(value);
 		}
 
-		[Ordinal(66)] 
+		[Ordinal(70)] 
 		[RED("HACK_lastItemDisplayEvent")] 
 		public CHandle<ItemDisplayClickEvent> HACK_lastItemDisplayEvent
 		{
@@ -550,6 +582,8 @@ namespace WolvenKit.RED4.Types
 			WardrobeOutfitSlotControllers = new();
 			DelayedTimeoutCallbackId = new gameDelayID();
 			TimeoutPeroid = 0.500000F;
+			CurrentItems = new();
+			PreviousSelectedItem = new gameItemID();
 
 			PostConstruct();
 		}

@@ -28,6 +28,38 @@ namespace WolvenKit.RED4.Types
 			set => SetPropertyValue<CBool>(value);
 		}
 
+		[Ordinal(8)] 
+		[RED("cwArmsEquipRequested")] 
+		public CBool CwArmsEquipRequested
+		{
+			get => GetPropertyValue<CBool>();
+			set => SetPropertyValue<CBool>(value);
+		}
+
+		[Ordinal(9)] 
+		[RED("cwArmsEquipCompleted")] 
+		public CBool CwArmsEquipCompleted
+		{
+			get => GetPropertyValue<CBool>();
+			set => SetPropertyValue<CBool>(value);
+		}
+
+		[Ordinal(10)] 
+		[RED("vehicleInTPP")] 
+		public CBool VehicleInTPP
+		{
+			get => GetPropertyValue<CBool>();
+			set => SetPropertyValue<CBool>(value);
+		}
+
+		[Ordinal(11)] 
+		[RED("vehicleInTPPCallback")] 
+		public CHandle<redCallbackObject> VehicleInTPPCallback
+		{
+			get => GetPropertyValue<CHandle<redCallbackObject>>();
+			set => SetPropertyValue<CHandle<redCallbackObject>>(value);
+		}
+
 		public CoolExitingEvents()
 		{
 			ExitSlot = "cool";

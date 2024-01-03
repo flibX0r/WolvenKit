@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using HelixToolkit.SharpDX.Core;
 using HelixToolkit.Wpf.SharpDX;
+using SharpDX.DirectWrite;
 using WolvenKit.App.Extensions;
 using WolvenKit.App.Helpers;
 using WolvenKit.App.Models;
@@ -20,6 +21,7 @@ using WolvenKit.Common.DDS;
 using WolvenKit.Common.Interfaces;
 using WolvenKit.Core.Extensions;
 using WolvenKit.Core.Interfaces;
+using WolvenKit.Modkit.RED4;
 using WolvenKit.Modkit.RED4.Tools;
 using WolvenKit.RED4.Archive.CR2W;
 using WolvenKit.RED4.CR2W;
@@ -310,13 +312,6 @@ public partial class PropertiesViewModel : ToolViewModel
 
     private void PreviewCr2wFile(CR2WFile cr2w)
     {
-        //if (string.Equals(extension, ERedExtension.bk2.ToString(),
-        //   System.StringComparison.OrdinalIgnoreCase))
-        //{
-        //    IsVideoPreviewVisible = true;
-        //    SetExeCommand?.Invoke("test.exe | test2.bk2 /J /I2 /P");
-        //}
-
         if (cr2w.RootChunk is CMesh cmesh)
         {
             LoadModel(cmesh);
@@ -360,14 +355,9 @@ public partial class PropertiesViewModel : ToolViewModel
     {
         var image = RedImage.FromRedClass(cls);
 
-        if (image.Metadata.Format == DXGI_FORMAT.DXGI_FORMAT_R8G8_UNORM)
-        {
-            return;
-        }
-
         var bitmapImage = new BitmapImage();
         bitmapImage.BeginInit();
-        bitmapImage.StreamSource = new MemoryStream(image.GetPreview());
+        bitmapImage.StreamSource = new MemoryStream(image.GetPreview(true));
         bitmapImage.EndInit();
 
         LoadedBitmapFrame = bitmapImage;
@@ -385,14 +375,9 @@ public partial class PropertiesViewModel : ToolViewModel
             return;
         }
 
-        if (image.Metadata.Format == DXGI_FORMAT.DXGI_FORMAT_R8G8_UNORM)
-        {
-            return;
-        }
-
         var bitmapImage = new BitmapImage();
         bitmapImage.BeginInit();
-        bitmapImage.StreamSource = new MemoryStream(image.GetPreview());
+        bitmapImage.StreamSource = new MemoryStream(image.GetPreview(false));
         bitmapImage.EndInit();
 
         LoadedBitmapFrame = bitmapImage;

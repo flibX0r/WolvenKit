@@ -9,6 +9,7 @@ using WolvenKit.App.Interaction;
 using WolvenKit.App.Services;
 using WolvenKit.App.ViewModels.Scripting;
 using WolvenKit.App.ViewModels.Shell;
+using WolvenKit.Core.Interfaces;
 using WolvenKit.Modkit.Scripting;
 
 namespace WolvenKit.App.ViewModels.Dialogs;
@@ -20,13 +21,15 @@ public partial class ScriptManagerViewModel : DialogViewModel
     private readonly AppViewModel _appViewModel;
     private readonly AppScriptService _scriptService;
     private readonly ISettingsManager _settingsManager;
+    private readonly ILoggerService _loggerService;
 
     
-    public ScriptManagerViewModel(AppViewModel appViewModel, AppScriptService scriptService, ISettingsManager settingsManager)
+    public ScriptManagerViewModel(AppViewModel appViewModel, AppScriptService scriptService, ISettingsManager settingsManager, ILoggerService loggerService)
     {
         _appViewModel = appViewModel;
         _scriptService = scriptService;
         _settingsManager = settingsManager;
+        _loggerService = loggerService;
 
         GetScriptFiles();
     }
@@ -65,6 +68,15 @@ public partial class ScriptManagerViewModel : DialogViewModel
     [RelayCommand]
     private void Cancel() => _appViewModel.CloseModalCommand.Execute(null);
 
+    [RelayCommand]
+    private async Task UpdateScripts()
+    {
+        await _appViewModel.CheckForScriptUpdatesCommand.ExecuteAsync(null);
+        GetScriptFiles();
+
+        _loggerService.Info("Scripts update complete");
+    }
+
     public void GetScriptFiles()
     {
         _settingsManager.ScriptStatus ??= new();
@@ -88,6 +100,7 @@ public partial class ScriptManagerViewModel : DialogViewModel
         {
             var generalScriptDir = new ScriptDirectoryViewModel(scriptSource, ScriptType.General, _settingsManager);
             var hookScriptDir = new ScriptDirectoryViewModel(scriptSource, ScriptType.Hook, _settingsManager);
+            var libScriptDir = new ScriptDirectoryViewModel(scriptSource, ScriptType.Lib, _settingsManager);
             var uiScriptDir = new ScriptDirectoryViewModel(scriptSource, ScriptType.Ui, _settingsManager);
 
             foreach (var systemScript in _scriptService.GetScripts(path))
@@ -102,6 +115,9 @@ public partial class ScriptManagerViewModel : DialogViewModel
                     case ScriptType.Hook:
                         hookScriptDir.Files.Add(new ScriptFileViewModel(_settingsManager, scriptSource, systemScript));
                         break;
+                    case ScriptType.Lib:
+                        libScriptDir.Files.Add(new ScriptFileViewModel(_settingsManager, scriptSource, systemScript));
+                        break;
                     case ScriptType.Ui:
                         uiScriptDir.Files.Add(new ScriptFileViewModel(_settingsManager, scriptSource, systemScript));
                         break;
@@ -112,6 +128,7 @@ public partial class ScriptManagerViewModel : DialogViewModel
 
             Scripts.Add(generalScriptDir);
             Scripts.Add(hookScriptDir);
+            Scripts.Add(libScriptDir);
             Scripts.Add(uiScriptDir);
         }
     }
@@ -183,6 +200,8 @@ public partial class ScriptManagerViewModel : DialogViewModel
 
         if (response == WMessageBoxResult.Yes)
         {
+            _scriptService.RemoveFromCache(scriptFile.Path);
+
             File.Delete(scriptFile.Path);
             GetScriptFiles();
         }

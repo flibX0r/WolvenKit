@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Platforms>x64</Platforms>
-    <TargetFramework>net7.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.17763</TargetFramework>
     <AssemblyName>WolvenKit</AssemblyName>
     <RootNamespace>WolvenKit</RootNamespace>
     <DefaultLanguage>en-US</DefaultLanguage>
@@ -21,9 +21,9 @@
   </PropertyGroup>
 	
   <PropertyGroup>
-	  <VersionPrefix>8.11.1</VersionPrefix>
+	  <VersionPrefix>8.12.1</VersionPrefix>
 	  <VersionSuffix>$(VersionSuffix)</VersionSuffix>
-	  <InformationalVersion>8.11.1</InformationalVersion>
+	  <InformationalVersion>8.12.1</InformationalVersion>
   </PropertyGroup>
 	
   <PropertyGroup>
@@ -116,7 +116,6 @@
     <Page Remove="Resources\Styles\Custom\**" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Remove="Resources\Scripts\export_example.cs" />
     <Compile Remove="Views\Templates\RedFixedPointEditor.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -178,27 +177,6 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="Resources\Media\Images\Icons\Files\tweak.svg">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Media\t1.kark">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Media\t2.kark">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Media\t3.kark">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Media\t4.kark">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Media\t5.kark">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Scripts\*">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Resources\Wolvenkit.Installer.Package.appinstaller">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
 
@@ -1761,15 +1739,9 @@
     <None Remove="Resources\Media\Images\Icons\Files\wizdef.svg" />
     <None Remove="Resources\Media\Images\Icons\Files\workspot2.svg" />
     <None Remove="Resources\Media\rau.kark" />
-    <None Remove="Resources\Media\t1.kark" />
-    <None Remove="Resources\Media\t2.kark" />
-    <None Remove="Resources\Media\t3.kark" />
-    <None Remove="Resources\Media\t4.kark" />
-    <None Remove="Resources\Media\t5.kark" />
     <None Remove="Resources\Media\test.kark" />
     <None Remove="Resources\Media\testc.kark" />
     <None Remove="Resources\Media\testconv.kark" />
-    <None Remove="Resources\Scripts\*" />
     <None Remove="Resources\SkyboxTextures\CloudyLightRaysBack512.png" />
     <None Remove="Resources\SkyboxTextures\CloudyLightRaysDown512.png" />
     <None Remove="Resources\SkyboxTextures\CloudyLightRaysFront512.png" />
@@ -1783,7 +1755,6 @@
     <None Remove="Resources\SkyboxTextures\skyrender0005.bmp" />
     <None Remove="Resources\SyntaxHighlighting\JavaScript-DarkMode.xshd" />
     <None Remove="Resources\SyntaxHighlighting\YAML.xshd" />
-    <None Remove="Resources\Wolvenkit.Installer.Package.appinstaller" />
     <None Remove="sample.mp4" />
     <None Remove="SplashScreen1.png" />
     <None Remove="TaskBarIcon.ico" />

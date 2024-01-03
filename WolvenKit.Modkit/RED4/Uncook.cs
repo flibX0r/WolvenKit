@@ -8,8 +8,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using SharpGLTF.Schema2;
-using SharpGLTF.Validation;
+
 using WolvenKit.Common;
 using WolvenKit.Common.Conversion;
 using WolvenKit.Common.DDS;
@@ -17,6 +16,7 @@ using WolvenKit.Common.Extensions;
 using WolvenKit.Common.Model.Arguments;
 using WolvenKit.Common.Services;
 using WolvenKit.Core.Extensions;
+using WolvenKit.Core.Wwise;
 using WolvenKit.Modkit.Extensions;
 using WolvenKit.Modkit.RED4.GeneralStructs;
 using WolvenKit.Modkit.RED4.Opus;
@@ -26,6 +26,11 @@ using WolvenKit.RED4.Archive;
 using WolvenKit.RED4.CR2W;
 using WolvenKit.RED4.CR2W.JSON;
 using WolvenKit.RED4.Types;
+
+using SharpGLTF.Schema2;
+using SharpGLTF.Validation;
+using NAudio.Wave;
+using NAudio.Lame;
 
 namespace WolvenKit.Modkit.RED4
 {
@@ -108,11 +113,12 @@ namespace WolvenKit.Modkit.RED4
 
                 #region extract buffers
 
-                var hasBuffers = (entry.SegmentsEnd - entry.SegmentsStart) > 1;
-                if (!hasBuffers)
-                {
-                    return true;
-                }
+                // Why is that here? Doesn't work with wem files - S. Eberoth
+                //var hasBuffers = (entry.SegmentsEnd - entry.SegmentsStart) > 1;
+                //if (!hasBuffers)
+                //{
+                //    return true;
+                //}
 
                 // uncook main file buffers to raw out dir
                 if (rawOutDir is null or { Exists: false })
@@ -405,8 +411,7 @@ namespace WolvenKit.Modkit.RED4
             {
                 if (settings.Get<WemExportArgs>() is { } wemaArgs && wemaArgs.FileName is not null)
                 {
-                    var wemoutfile = Path.ChangeExtension(outfile.FullName, wemaArgs.wemExportType.ToString());
-                    UncookWem(wemaArgs.FileName, wemoutfile);
+                    UncookWem(outfile, wemaArgs);
                     return true;
                 }
 
@@ -417,8 +422,8 @@ namespace WolvenKit.Modkit.RED4
             //args.FileName = outFileInfo.FullName;
             switch (extAsEnum)
             {
-                case ECookedFileFormat.ent:
-                    return ExportEntity(cr2wStream, "default", outfile);
+                //case ECookedFileFormat.ent:
+                //    return ExportEntity(cr2wStream, "default", outfile);
                 //case ECookedFileFormat.app:
                 //    return HandleEntity(cr2wStream, outfile, settings.Get<EntityExportArgs>());
                 case ECookedFileFormat.opusinfo:
@@ -485,22 +490,23 @@ namespace WolvenKit.Modkit.RED4
                     if (WolvenTesting.IsTesting)
                     {
                         using var ms = new MemoryStream();
-                        return ConvertXbmToDdsStream(cr2wStream, ms, out _, out _);
+                        return ConvertXbmToDdsStream(cr2wStream, ms, true, out _, out _);
                     }
 
                     using (var ms = new MemoryStream())
                     {
-                        if (!ConvertXbmToDdsStream(cr2wStream, ms, out _, out var decompressedFormat))
+                        // always flip on export
+                        if (!ConvertXbmToDdsStream(cr2wStream, ms, true, out _, out var decompressedFormat))
                         {
                             return false;
                         }
 
                         // convert if needed else save to file
                         var ddsPath = Path.ChangeExtension(outfile.FullName, ERawFileFormat.dds.ToString());
-                        if (xbmargs.UncookExtension != EUncookExtension.dds || xbmargs.Flip)
+                        if (xbmargs.UncookExtension != EUncookExtension.dds)
                         {
                             ms.Seek(0, SeekOrigin.Begin);
-                            return Texconv.ConvertFromDdsAndSave(ms, ddsPath, xbmargs, decompressedFormat);
+                            return Texconv.ConvertFromDdsAndSave(ms, ddsPath, xbmargs, false, decompressedFormat);
                         }
                         else
                         {
@@ -675,6 +681,8 @@ namespace WolvenKit.Modkit.RED4
                 if (_parserService.TryReadRed4File(ms, out var file))
                 {
                     var img = RedImage.FromRedFile(file);
+                    img.FlipV();
+
                     foreach (var part in parts)
                     {
                         var x = Math.Round(part.ClippingRectInUVCoords.Left * img.Metadata.Width);
@@ -781,7 +789,7 @@ namespace WolvenKit.Modkit.RED4
 
             var expMeshes = new List<RawMeshContainer>();
             var matData = new List<MatData>();
-            foreach (var meshStream in meshStreamS.Keys)
+            foreach (var (meshStream, meshName) in meshStreamS)
             {
                 var cr2w = _parserService.ReadRed4File(meshStream);
                 if (cr2w == null || cr2w.RootChunk is not CMesh cMesh || cMesh.RenderResourceBlob == null || cMesh.RenderResourceBlob.Chunk is not rendRenderMeshBlob rendblob)
@@ -791,16 +799,16 @@ namespace WolvenKit.Modkit.RED4
 
                 using var ms = new MemoryStream(rendblob.RenderBuffer.Buffer.GetBytes());
 
-                var meshesinfo = MeshTools.GetMeshesinfo(rendblob, cr2w.RootChunk as CMesh);
+                var meshesinfo = MeshTools.GetMeshesinfo(rendblob, cr2w.RootChunk as CMesh, meshName);
 
-                var Meshes = MeshTools.ContainRawMesh(ms, meshesinfo, meshExportArgs.LodFilter);
+                var Meshes = MeshTools.ContainRawMesh(ms, meshesinfo, meshExportArgs.LodFilter,  ulong.MaxValue,  false, meshName);
                 MeshTools.UpdateSkinningParamCloth(ref Meshes, meshStream, cr2w);
 
                 MeshTools.WriteGarmentParametersToMesh(ref Meshes, cMesh, meshExportArgs.ExportGarmentSupport);
 
                 var meshRig = MeshTools.GetOrphanRig(cMesh);
 
-                MeshTools.UpdateMeshJoints(ref Meshes, expRig, meshRig, meshStreamS[meshStream]);
+                MeshTools.UpdateMeshJoints(ref Meshes, expRig, meshRig, meshName);
 
                 if (meshExportArgs.withMaterials)
                 {
@@ -950,7 +958,7 @@ namespace WolvenKit.Modkit.RED4
             SaveMaterials(outfile, materialDataToExport);
             _SaveMeshes(outfile, modelsAndRigsCombinedToExport);
 
-            _loggerService.Info($"Mesh export completed, {meshesToExport.Count} meshes, {materialDataToExport.Count} materials, {rigsCombinedToExport?.Names?.Length ?? 0} rigs");
+            _loggerService.Info($"Mesh export completed, {meshesToExport.Count} meshes, {materialDataToExport.Count} materials, {rigsCombinedToExport?.Names?.Length ?? 0} bones");
             return true;
 
 
@@ -1079,28 +1087,56 @@ namespace WolvenKit.Modkit.RED4
 
 #endregion NewMeshExporter
 
-        private static void UncookWem(string infile, string outfile)
+        private static void UncookWem(FileInfo outfile, WemExportArgs args)
         {
+            
+
+            if (args.FileName is null)
+            {
+                return;
+            }
             if (WolvenTesting.IsTesting)
             {
                 return;
             }
 
-            var arg = infile.ToEscapedPath() + " -o " + outfile.ToEscapedPath();
-            var si = new ProcessStartInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "lib", "test.exe"), arg)
+            var wemoutfile = Path.ChangeExtension(outfile.FullName, args.wemExportType.ToString());
+
+            if (!Wem.TryConvert(File.ReadAllBytes(args.FileName), out var oggBuffer))
             {
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden,
-                UseShellExecute = false,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                Verb = "runas"
-            };
-            var proc = Process.Start(si);
-            if (proc != null)
+                return;
+            }
+
+            switch (args.wemExportType)
             {
-                proc.WaitForExit();
-                Trace.WriteLine(proc.StandardOutput.ReadToEnd());
+                case WemExportTypes.Wav:
+                {
+                    using var ms = new MemoryStream(oggBuffer);
+                    using var reader = new NAudio.Vorbis.VorbisWaveReader(ms);
+                    WaveFileWriter.CreateWaveFile(wemoutfile, reader);
+
+                    break;
+                }
+                case WemExportTypes.Mp3:
+                {
+                    using var ms = new MemoryStream(oggBuffer);
+                    using var reader = new NAudio.Vorbis.VorbisWaveReader(ms);
+
+                    var mp3Writer = new LameMP3FileWriter(wemoutfile, reader.WaveFormat, 128);
+                    reader.CopyTo(mp3Writer);
+                    mp3Writer.Flush();
+                    mp3Writer.Close();
+
+                    break;
+                }
+                case WemExportTypes.Ogg:
+                {
+                    File.WriteAllBytes(wemoutfile, oggBuffer);
+
+                    break;
+                }
+                default:
+                    break;
             }
         }
 
@@ -1184,16 +1220,16 @@ namespace WolvenKit.Modkit.RED4
             return true;
         }
 
-        public bool ConvertXbmToDdsStream(Stream redInFile, Stream outstream, out DXGI_FORMAT texformat, out DXGI_FORMAT decompressedFormat)
+        public bool ConvertXbmToDdsStream(Stream redInFile, Stream outstream, bool flipV, out DXGI_FORMAT texformat, out DXGI_FORMAT decompressedFormat)
         {
             texformat = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
             decompressedFormat = DXGI_FORMAT.DXGI_FORMAT_UNKNOWN;
 
             // read the cr2wfile
-            return _parserService.TryReadRed4File(redInFile, out var cr2w) && ConvertRedClassToDdsStream(cr2w.RootChunk, outstream, out texformat, out decompressedFormat);
+            return _parserService.TryReadRed4File(redInFile, out var cr2w) && ConvertRedClassToDdsStream(cr2w.RootChunk, outstream, out texformat, out decompressedFormat, flipV);
         }
 
-        public static bool ConvertRedClassToDdsStream(RedBaseClass cls, Stream outstream, out DXGI_FORMAT texformat, out DXGI_FORMAT decompressedFormat, bool flipV = false)
+        public static bool ConvertRedClassToDdsStream(RedBaseClass cls, Stream outstream, out DXGI_FORMAT texformat, out DXGI_FORMAT decompressedFormat, bool flipV)
         {
             texformat = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
             decompressedFormat = DXGI_FORMAT.DXGI_FORMAT_UNKNOWN;
@@ -1204,9 +1240,9 @@ namespace WolvenKit.Modkit.RED4
 
                 texformat = img.Metadata.Format;
                 decompressedFormat = img.Metadata.Format;
-                if (img.CompressionFormat != null)
+                if (img.UncompressedFormat != null)
                 {
-                    texformat = (DXGI_FORMAT)img.CompressionFormat;
+                    decompressedFormat = (DXGI_FORMAT)img.UncompressedFormat;
                 }
 
                 if (flipV)
